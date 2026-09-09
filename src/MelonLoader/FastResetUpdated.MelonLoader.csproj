@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>FastResetUpdated</AssemblyName>
+    <RootNamespace>FastResetUpdated.MelonLoader</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The shared game logic lives in ..\Shared and has no project of its own — it is
+         compiled straight into this assembly against MelonLoader's own copy of the game's
+         interop types. The BepInEx project compiles the exact same files against its own
+         copy instead, so both builds share one source of truth without ever having to treat
+         one loader's interop DLLs as compatible with the other's. -->
+    <Compile Include="..\Shared\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="MelonLoader">
+      <HintPath>$(MelonLoaderDir)\net6\MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(MelonLoaderDir)\net6\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(MelonLoaderDir)\net6\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Drop the built mod straight into the game's Mods folder once MelonLoaderDir is set
+       in FastReset.local.props, so "build" is the whole install step. -->
+  <Target Name="CopyToMods" AfterTargets="Build" Condition="'$(MelonLoaderDir)' != ''">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MelonLoaderDir)\..\Mods" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

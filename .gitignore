@@ -1,0 +1,10 @@
+# Build output
+bin/
+obj/
+
+# Your local machine paths — see FastReset.local.props.example
+FastReset.local.props
+
+# IDE
+.vs/
+*.user

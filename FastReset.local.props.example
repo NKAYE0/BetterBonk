@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!-- Your Megabonk install folder, e.g. a Steam library location. -->
+    <MegabonkDir>C:\Program Files (x86)\Steam\steamapps\common\Megabonk</MegabonkDir>
+
+    <!-- Only needed for the build(s) you actually use — leave the other blank or delete the
+         line entirely if you only mod with one loader. -->
+    <MelonLoaderDir>$(MegabonkDir)\MelonLoader</MelonLoaderDir>
+    <BepInExDir>$(MegabonkDir)\BepInEx</BepInExDir>
+  </PropertyGroup>
+</Project>

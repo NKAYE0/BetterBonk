@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Machine-specific paths (where Megabonk/MelonLoader/BepInEx actually live on disk) are
+       kept out of version control in FastReset.local.props, so everyone building this can
+       point it at their own install without ever touching a tracked file. Copy
+       FastReset.local.props.example to FastReset.local.props and fill in your paths. -->
+  <Import Project="$(MSBuildThisFileDirectory)FastReset.local.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)FastReset.local.props')" />
+</Project>
