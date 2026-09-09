@@ -14,6 +14,10 @@ namespace FastResetUpdated.Shared
         public string ToggleModKey { get; set; } = "F6";   // fully enables/disables auto-reset
         public string ToggleMenuKey { get; set; } = "F7";  // opens/closes the in-game settings window
 
+        // Small always-on-screen "Fast Reset: ON/OFF" label, since the toggle key alone gives
+        // no feedback about which state the mod is currently in.
+        public bool ShowStatusIndicator { get; set; } = true;
+
         // --- Core requisites (defaults reproduce the original mod's behaviour) ---
         public int MinCombinedShadyAndMoai { get; set; } = 8;
         public int MinLegendaryShadyCount { get; set; } = 1;
@@ -21,11 +25,10 @@ namespace FastResetUpdated.Shared
 
         // Highest rarity index a Microwave may have and still count as acceptable.
         // 0 = Common only, matching the original mod's "Basic Microwaves" requirement.
-        // Rarity is read from the game as an EItemRarity enum; we treat it as a plain int
-        // (0 = Common, 1 = Uncommon, 2 = Rare, 3 = Legendary) because that is what the
-        // original mod's own comparison (rarity == 3 for "Legendary") implies. If a future
-        // game update adds more tiers, raise this value or the ones below — nothing else
-        // needs to change.
+        // Rarity is read from the game's own EItemRarity enum (confirmed by decompiling
+        // Assembly-CSharp.dll): 0 = Common, 1 = Rare, 2 = Epic, 3 = Legendary, 4 = Corrupted,
+        // 5 = Quest. Stored here as a plain int rather than the enum type itself so this file
+        // has no dependency on the game's assemblies.
         public int MaxAcceptableMicrowaveRarity { get; set; } = 0;
 
         // Rarity index that counts as "Legendary" for a Shady Guy.
@@ -40,6 +43,14 @@ namespace FastResetUpdated.Shared
         public int LegendarySurgeThreshold { get; set; } = 2;
         public int LegendarySurgeCombinedReduction { get; set; } = 3;
         public int LegendarySurgeMicrowaveReduction { get; set; } = 1;
+
+        // --- Require a specific Legendary item to be on offer from a Shady Guy ---
+        // Stored as the game's EItem enum name (e.g. "ZaWarudo") rather than the enum type
+        // itself, for the same reason as the hotkey names above: keeps this file independent
+        // of the game's assemblies, and human-readable/editable in the JSON file. Only ever
+        // matched against items a Shady Guy is offering at Legendary rarity — see ModCore.
+        public bool RequireSpecificLegendaryItem { get; set; } = false;
+        public string RequiredLegendaryItemName { get; set; } = "";
 
         public static FilterConfig CreateDefault()
         {

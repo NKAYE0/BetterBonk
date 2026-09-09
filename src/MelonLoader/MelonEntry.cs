@@ -6,7 +6,7 @@ using MelonLoader;
 // MelonGame(null, null) matches the original Fast Reset mod exactly (verified by decompiling
 // it) — i.e. it doesn't restrict itself to a specific game internally, so this keeps the same
 // "no restriction" behaviour rather than guessing at Megabonk's internal MelonGame identifier.
-[assembly: MelonInfo(typeof(FastResetUpdated.MelonLoader.MelonEntry), "Fast Reset Updated", "2.0.0", "NK")]
+[assembly: MelonInfo(typeof(FastResetUpdated.MelonLoader.MelonEntry), "FastReset+", "2.1.0", "NK")]
 [assembly: MelonGame(null, null)]
 
 namespace FastResetUpdated.MelonLoader
@@ -31,7 +31,7 @@ namespace FastResetUpdated.MelonLoader
             ConfigStore configStore = new ConfigStore(configDir, logger);
 
             _core = new ModCore(logger, configStore);
-            LoggerInstance.Msg("Fast Reset Updated loaded!");
+            LoggerInstance.Msg("FastReset+ loaded!");
         }
 
         public override void OnUpdate()

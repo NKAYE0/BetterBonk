@@ -14,7 +14,7 @@ using UnityEngine;
 
 namespace FastResetUpdated.BepInEx
 {
-    [BepInPlugin("nk.fastresetupdated", "Fast Reset Updated", "2.0.0")]
+    [BepInPlugin("nk.fastresetupdated", "FastReset+", "2.1.0")]
     public sealed class BepInExEntry : BasePlugin
     {
         internal static ModCore Core { get; private set; }
@@ -34,7 +34,7 @@ namespace FastResetUpdated.BepInEx
             UnityEngine.Object.DontDestroyOnLoad(carrier);
             carrier.AddComponent<FastResetBehaviour>();
 
-            Log.LogInfo("Fast Reset Updated loaded!");
+            Log.LogInfo("FastReset+ loaded!");
         }
     }
 }

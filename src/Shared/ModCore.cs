@@ -1,5 +1,6 @@
 using System;
 using Il2Cpp;
+using Il2CppAssets.Scripts.Inventory__Items__Pickups.Items;
 using UnityEngine;
 
 namespace FastResetUpdated.Shared
@@ -24,6 +25,11 @@ namespace FastResetUpdated.Shared
         // potentially pause or reset) a given run a single time.
         private bool _hasCheckedThisRun;
 
+        // Previous-frame key state for edge-detecting a fresh press via Win32Input (see
+        // PollHotkeys) rather than a held-down key re-triggering every frame.
+        private bool _toggleModKeyWasDown;
+        private bool _toggleMenuKeyWasDown;
+
         public ModCore(IModLogger logger, ConfigStore configStore)
         {
             _logger = logger;
@@ -40,7 +46,7 @@ namespace FastResetUpdated.Shared
         {
             Config = FilterConfig.CreateDefault();
             SaveConfig();
-            _logger.Msg("Fast Reset Updated: settings reset to defaults.");
+            _logger.Msg("FastReset+: settings reset to defaults.");
         }
 
         // Call once per frame from the loader's Update callback.
@@ -54,26 +60,35 @@ namespace FastResetUpdated.Shared
 
         private void PollHotkeys()
         {
-            // Hotkeys are polled regardless of ModEnabled so the toggle key always works,
-            // even while the mod is currently switched off.
-            if (TryParseKey(Config.ToggleModKey, out KeyCode toggleKey) && Input.GetKeyDown(toggleKey))
+            // Read straight from Win32 rather than UnityEngine.Input — see Win32Input.cs for
+            // why (Megabonk's Rewired-based input handling swallows Unity's own key polling).
+            // Hotkeys are polled regardless of ModEnabled so the toggle key always works, even
+            // while the mod is currently switched off.
+            if (PollKeyJustPressed(Config.ToggleModKey, ref _toggleModKeyWasDown))
             {
                 Config.ModEnabled = !Config.ModEnabled;
                 SaveConfig();
-                _logger.Msg($"Fast Reset Updated: mod {(Config.ModEnabled ? "enabled" : "disabled")}.");
+                _logger.Msg($"FastReset+: mod {(Config.ModEnabled ? "enabled" : "disabled")}.");
             }
 
-            if (TryParseKey(Config.ToggleMenuKey, out KeyCode menuKey) && Input.GetKeyDown(menuKey))
+            if (PollKeyJustPressed(Config.ToggleMenuKey, ref _toggleMenuKeyWasDown))
                 ToggleMenu();
         }
 
-        private static bool TryParseKey(string keyName, out KeyCode key)
+        // True only on the frame a configured key transitions from up to down, so a held key
+        // doesn't re-trigger every frame.
+        private static bool PollKeyJustPressed(string keyName, ref bool wasDownLastFrame)
         {
-            if (!string.IsNullOrEmpty(keyName) && Enum.TryParse(keyName, ignoreCase: true, result: out key))
-                return true;
+            if (!Win32Input.TryGetVirtualKey(keyName, out int virtualKeyCode))
+            {
+                wasDownLastFrame = false;
+                return false;
+            }
 
-            key = default;
-            return false;
+            bool isDown = Win32Input.IsKeyDown(virtualKeyCode);
+            bool justPressed = isDown && !wasDownLastFrame;
+            wasDownLastFrame = isDown;
+            return justPressed;
         }
 
         // Mirrors the original mod's OnUpdate: only look at spawns once per run, and only
@@ -113,13 +128,35 @@ namespace FastResetUpdated.Shared
             int moaiCount = UnityEngine.Object.FindObjectsOfType<InteractableShrineMoai>().Length;
             var microwaves = UnityEngine.Object.FindObjectsOfType<InteractableMicrowave>();
 
+            // Only meaningful when Config.RequireSpecificLegendaryItem is on — parsed once
+            // up-front rather than per Shady Guy. An empty/unparsable name (e.g. nothing chosen
+            // yet in the picker) means the requirement can never be satisfied, which is the
+            // correct behaviour: nothing selected shouldn't silently pass.
+            bool requireSpecificItem = Config.RequireSpecificLegendaryItem;
+            EItem requiredItem = default;
+            bool hasRequiredItemName = requireSpecificItem &&
+                Enum.TryParse(Config.RequiredLegendaryItemName, out requiredItem);
+
             int legendaryShadyCount = 0;
+            bool requiredItemFound = false;
             foreach (InteractableShadyGuy guy in shadyGuys)
             {
                 int rarity = (int)guy.rarity;
                 _logger.Msg($"  ShadyGuy rarity: {rarity}");
                 if (rarity == Config.LegendaryRarityValue)
                     legendaryShadyCount++;
+
+                if (requireSpecificItem && hasRequiredItemName && !requiredItemFound && guy.items != null)
+                {
+                    foreach (ItemData item in guy.items)
+                    {
+                        if (item.eItem == requiredItem && item.rarity == EItemRarity.Legendary)
+                        {
+                            requiredItemFound = true;
+                            break;
+                        }
+                    }
+                }
             }
 
             bool allMicrowavesAcceptableRarity = true;
@@ -150,12 +187,16 @@ namespace FastResetUpdated.Shared
             string surgeNote = surgeActive
                 ? $" [Legendary Surge active — needs {effectiveMinCombined} combined / {effectiveMinMicrowave} microwaves]"
                 : string.Empty;
+            string itemNote = requireSpecificItem
+                ? $", Required item '{Config.RequiredLegendaryItemName}' found: {requiredItemFound}"
+                : string.Empty;
 
             _logger.Msg(
                 $"ShadyGuys: {shadyGuys.Length} (Legendary: {legendaryShadyCount}), Moai: {moaiCount}, " +
-                $"Microwaves: {microwaves.Length} (rarity OK: {allMicrowavesAcceptableRarity}){surgeNote}");
+                $"Microwaves: {microwaves.Length} (rarity OK: {allMicrowavesAcceptableRarity}){surgeNote}{itemNote}");
 
-            bool good = combinedOk && legendaryOk && microwaveOk;
+            bool requiredItemOk = !requireSpecificItem || requiredItemFound;
+            bool good = combinedOk && legendaryOk && microwaveOk && requiredItemOk;
 
             if (good)
             {

@@ -1,4 +1,4 @@
-# Fast Reset Updated
+# FastReset+
 
 A from-scratch rebuild of mzzJuice's [Fast Reset](https://www.nexusmods.com/megabonk/mods/145)
 mod for Megabonk, credited in full below. It reproduces the original's behaviour exactly by
@@ -15,15 +15,32 @@ default, and adds:
 - Builds for **both MelonLoader and BepInEx** from one shared codebase. MelonLoader is the
   priority build — if something ever has to give, keep that one working first.
 
+> **Status:** the MelonLoader build has been verified against the original mod's decompiled
+> behaviour and against a real MelonLoader install. The BepInEx build is untested — nobody
+> involved in writing it has a working BepInEx install to compile or run it against yet. Only
+> the MelonLoader release is recommended for upload until someone verifies BepInEx works.
+
+## Installation (players)
+
+1. Make sure [MelonLoader](https://melonwiki.xyz/) is installed for Megabonk.
+2. Download `FastResetUpdated.dll` and drop it into your Megabonk `Mods` folder.
+3. Launch the game. **F6** toggles the mod on/off, **F7** opens the settings menu.
+
+This works regardless of where Steam (or any other launcher) installed the game — the mod
+finds its own settings folder at runtime via MelonLoader's own APIs, nothing about a
+particular install path is baked into the compiled file. The `FastReset.local.props` /
+project-reference setup described below only matters if you're building the mod yourself from
+source; it has no effect on the compiled `.dll` you'd distribute.
+
+**Don't run this alongside the original Fast Reset mod** — both would fight over the same
+run-reset trigger. Uninstall the original before installing this.
+
 ## Why this exists rather than patching the original
 
 The original mod isn't open source, so this is a clean-room reimplementation: I decompiled the
 original `.dll`'s IL to confirm exactly which game methods/fields it reads and calls (see
 "How this was verified" below), then wrote fresh source implementing the same behaviour plus
 the requested additions. Nothing here is copied from the original binary.
-
-**Don't run this alongside the original Fast Reset mod** — both would fight over the same
-run-reset trigger. Uninstall the original before installing this.
 
 ## Project layout
 
