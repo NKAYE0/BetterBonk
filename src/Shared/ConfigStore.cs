@@ -17,9 +17,16 @@ namespace FastResetUpdated.Shared
         private readonly string _filePath;
         private readonly IModLogger _logger;
 
+        // Exposed so ModCore can point a PresetStore at the same settings folder without either
+        // class needing to know the other's file-naming conventions. Deliberately not named
+        // "Directory" — a property with that name would shadow the System.IO.Directory type
+        // used elsewhere in this class.
+        public string ConfigDirectory { get; }
+
         public ConfigStore(string directory, IModLogger logger)
         {
             _logger = logger;
+            ConfigDirectory = directory;
             Directory.CreateDirectory(directory);
             _filePath = Path.Combine(directory, "FastResetUpdated.config.json");
         }

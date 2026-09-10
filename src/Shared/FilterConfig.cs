@@ -18,8 +18,25 @@ namespace FastResetUpdated.Shared
         // no feedback about which state the mod is currently in.
         public bool ShowStatusIndicator { get; set; } = true;
 
+        // A 0-100 score for how well the current run's spawns matched your configured
+        // requisites, recomputed each time a new run is checked. Shown under the ON/OFF
+        // indicator, independent of whether ShowStatusIndicator itself is on.
+        public bool ShowMapScore { get; set; } = true;
+
+        // The Map Score (see above) a run must reach to be accepted (paused) rather than
+        // reset. Defaults to 100, which reproduces the original strict behaviour exactly:
+        // every category ratio is capped at 1.0, so the average can only reach 100 when
+        // every configured requisite is fully met. Lowering this (e.g. to 80) accepts a
+        // run that's "good enough" overall even if one or more categories fall short.
+        public int AcceptableMapScore { get; set; } = 100;
+
         // --- Core requisites (defaults reproduce the original mod's behaviour) ---
+        // Shady Guys and Moai can be checked as one combined minimum (the default, matching the
+        // original mod) or as two independent minimums — see MinShadyGuyCount/MinMoaiCount below.
+        public bool UseSeparateShadyAndMoaiCounts { get; set; } = false;
         public int MinCombinedShadyAndMoai { get; set; } = 8;
+        public int MinShadyGuyCount { get; set; } = 0;
+        public int MinMoaiCount { get; set; } = 0;
         public int MinLegendaryShadyCount { get; set; } = 1;
         public int MinMicrowaveCount { get; set; } = 2;
 
@@ -31,12 +48,18 @@ namespace FastResetUpdated.Shared
         // has no dependency on the game's assemblies.
         public int MaxAcceptableMicrowaveRarity { get; set; } = 0;
 
-        // Rarity index that counts as "Legendary" for a Shady Guy.
-        public int LegendaryRarityValue { get; set; } = 3;
+        // Boss Curse = the game's InteractableBossSpawner (its own FX field is literally named
+        // "bossCurseFx" in the game's assembly, confirming the name). Legendary Charge Shrine =
+        // a ChargeShrine with isGolden true. Both default to 0 (no requirement) since they're
+        // new asks and shouldn't change existing users' behaviour until explicitly raised.
+        public int MinBossCurseCount { get; set; } = 0;
+        public int MinLegendaryChargeShrineCount { get; set; } = 0;
 
-        // The single per-run check fires once gameTimer enters this window (seconds).
-        public float CheckWindowStartSeconds { get; set; } = 1.0f;
-        public float CheckWindowEndSeconds { get; set; } = 2.0f;
+        // Not user-configurable: "Legendary" is compared directly against the game's own
+        // EItemRarity.Legendary enum value (see ModCore), and the per-run check window
+        // (gameTimer 1.0s-2.0s, matching the original mod) is hardcoded in ModCore too — both
+        // were user-adjustable in an earlier version of this file, but neither is something a
+        // player has a reason to tune, so they were removed to keep the menu focused.
 
         // --- "Legendary Surge": enough Legendary Shady Guys relaxes the requisites above ---
         public bool EnableLegendarySurge { get; set; } = false;

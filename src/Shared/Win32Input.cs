@@ -45,6 +45,10 @@ namespace FastResetUpdated.Shared
             return IsKeyDown(0x10);
         }
 
+        // Standard, documented Win32 virtual-key codes (not guessed) for a US keyboard layout.
+        // Deliberately excludes Shift/Ctrl/Alt: the menu's +/- steppers already use Shift as a
+        // "bigger step" modifier, so binding a hotkey to Shift alone would fire every time a
+        // stepper button is Shift-clicked.
         private static Dictionary<string, int> BuildKeyMap()
         {
             var map = new Dictionary<string, int>();
@@ -57,6 +61,34 @@ namespace FastResetUpdated.Shared
 
             for (char c = '0'; c <= '9'; c++)
                 map[c.ToString()] = c;
+
+            for (int i = 0; i <= 9; i++)
+                map[$"NUMPAD{i}"] = 0x60 + i;
+
+            map["INSERT"] = 0x2D;
+            map["DELETE"] = 0x2E;
+            map["HOME"] = 0x24;
+            map["END"] = 0x23;
+            map["PAGEUP"] = 0x21;
+            map["PAGEDOWN"] = 0x22;
+            map["UP"] = 0x26;
+            map["DOWN"] = 0x28;
+            map["LEFT"] = 0x25;
+            map["RIGHT"] = 0x27;
+            map["TAB"] = 0x09;
+            map["CAPSLOCK"] = 0x14;
+            map["ENTER"] = 0x0D;
+            map["MINUS"] = 0xBD;
+            map["EQUALS"] = 0xBB;
+            map["LEFTBRACKET"] = 0xDB;
+            map["RIGHTBRACKET"] = 0xDD;
+            map["SEMICOLON"] = 0xBA;
+            map["QUOTE"] = 0xDE;
+            map["COMMA"] = 0xBC;
+            map["PERIOD"] = 0xBE;
+            map["SLASH"] = 0xBF;
+            map["BACKSLASH"] = 0xDC;
+            map["GRAVE"] = 0xC0;
 
             return map;
         }

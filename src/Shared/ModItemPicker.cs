@@ -6,20 +6,32 @@ using UnityEngine;
 
 namespace FastResetUpdated.Shared
 {
-    // Searchable picker for the "Required Item" setting, split out from ModMenu.cs. Lists every
-    // item name from the game's own EItem enum (via reflection on the interop assembly, so this
-    // stays correct if a future game update adds or renames items) — not just Legendary ones,
-    // since the game doesn't expose a static item-to-rarity table anywhere in the assembly
-    // (rarity is assigned per Legendary-tier ItemData instance at runtime). Selecting a
-    // non-Legendary item just means the requirement will never be satisfied; ModCore's check
-    // always requires Legendary rarity in addition to the chosen item, regardless of which one
-    // is picked here.
+    // Searchable picker for the "Required Item" setting, split out from ModMenu.cs. The game's
+    // assembly has no static item-to-rarity table (rarity is assigned per Legendary-tier
+    // ItemData instance at runtime), so this list is hard-coded rather than derived from the
+    // EItem enum by reflection — it's the set of items the user confirmed, in-game, as
+    // Legendary-tier, cross-checked against a community item list and matched to the game's
+    // real EItem enum member names by decompiling Assembly-CSharp.dll. A couple of entries
+    // (SpeedBoi, JoesDagger) were matched from icon appearance rather than an on-screen label
+    // and are worth a second look if a chosen item never seems to satisfy the requirement; one
+    // item from the reference list (GoldenRing) wasn't visible in the user's in-game screenshot
+    // at all, so its Legendary status is unconfirmed and it's left out pending that. If the
+    // filtered list ever needs to be regenerated after a game update, LegendaryItemNames is the
+    // one place to edit — each entry is validated against the live EItem enum before use, so a
+    // renamed or removed item is silently dropped rather than crashing.
     //
     // The search box is a small hand-rolled text input, not GUI.TextField: see ModMenu.cs's
     // file-level comment — this build's GUI.TextField throws every frame. Keystrokes are read
     // via the same Win32 polling already used for hotkeys and rebinding.
     public sealed partial class ModCore
     {
+        private static readonly string[] LegendaryItemNames =
+        {
+            "Anvil", "Bonker", "Chonkplate", "Dragonfire", "GiantFork", "GlovePower", "HolyBook",
+            "JoesDagger", "LightningOrb", "OverpoweredLamp", "Pot", "SpeedBoi", "SpicyMeatball",
+            "SuckyMagnet", "WizardsHat", "ZaWarudo",
+        };
+
         private static string[] _allItemNames;
 
         private bool _itemPickerOpen;
@@ -37,7 +49,8 @@ namespace FastResetUpdated.Shared
             {
                 if (_allItemNames == null)
                 {
-                    _allItemNames = Enum.GetNames(typeof(EItem))
+                    _allItemNames = LegendaryItemNames
+                        .Where(n => Enum.IsDefined(typeof(EItem), n))
                         .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                         .ToArray();
                 }
@@ -70,7 +83,7 @@ namespace FastResetUpdated.Shared
             Rect gripRect = new Rect(_itemPickerRect.width - GripSize, _itemPickerRect.height - GripSize, GripSize, GripSize);
             HandleItemPickerDragAndResize(titleBarRect, gripRect);
 
-            GUI.DrawTexture(new Rect(0, 0, _itemPickerRect.width, _itemPickerRect.height), GetBackgroundTexture());
+            DrawSolidRect(new Rect(0, 0, _itemPickerRect.width, _itemPickerRect.height), BackgroundColor);
 
             float contentWidth = _itemPickerRect.width - Margin * 2;
             float y = Margin;
@@ -123,7 +136,7 @@ namespace FastResetUpdated.Shared
             if (GUI.Button(closeRect, "Close"))
                 _itemPickerOpen = false;
 
-            GUI.DrawTexture(gripRect, GetGripTexture());
+            DrawResizeGrip(gripRect);
         }
 
         private void EnsureItemPickerStyles()
@@ -185,8 +198,8 @@ namespace FastResetUpdated.Shared
         // bordered field, and PollSearchTextInput below does the actual character capture.
         private void DrawSearchBox(Rect rect)
         {
-            GUI.DrawTexture(rect, GetGripTexture());
-            GUI.DrawTexture(new Rect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2), GetBackgroundTexture());
+            DrawSolidRect(rect, new Color(0.6f, 0.6f, 0.65f, 0.9f));
+            DrawSolidRect(new Rect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2), BackgroundColor);
 
             bool caretOn = (Time.frameCount / 20) % 2 == 0;
             string display = _itemSearchText + (caretOn ? "_" : string.Empty);

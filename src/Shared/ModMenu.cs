@@ -17,7 +17,10 @@ namespace FastResetUpdated.Shared
     // survived). Numeric fields are therefore +/- steppers (GUI.Button, already proven safe)
     // rather than typed text fields, and the item search box (see ModItemPicker.cs) reads
     // keystrokes via the same Win32 polling already used for hotkeys, instead of any built-in
-    // Unity text-editing widget.
+    // Unity text-editing widget. Moving/resizing and the scrollbar all use Event.current mouse
+    // handling (the same mechanism GUI.Button/Toggle already rely on for their own hit-testing)
+    // rather than GUI.Window's built-in title-bar dragging or GUI.BeginScrollView, since those
+    // were never independently verified on this build and this reuses an already-proven path.
     public sealed partial class ModCore
     {
         private enum RebindTarget
@@ -35,34 +38,67 @@ namespace FastResetUpdated.Shared
         private const float LabelColumnWidth = 230f;
         private const float StepperButtonWidth = 26f;
         private const float RebindButtonWidth = 100f;
-        private const float GripSize = 16f;
+        private const float GripSize = 13f;
+        private const float ScrollbarWidth = 10f;
         private const float MinWindowWidth = 360f;
-        private const float MinWindowHeight = 260f;
+        private const float MinWindowHeight = 220f;
 
         private bool _menuOpen;
-        private Rect _windowRect = new Rect(40, 20, 480, 480);
+        // Placeholder until the first time the menu is opened — see EnsureDefaultWindowSize,
+        // which resizes this to fill most of the screen at that point instead of leaving it
+        // this small. Kept as a real, sane Rect here (rather than default/zero) purely so the
+        // window is never briefly drawn at a degenerate size if something ever draws before
+        // that runs.
+        private Rect _windowRect = new Rect(40, 20, 480, 420);
+        private bool _windowSizeInitialized;
         private bool _dragging;
         private bool _resizing;
         private float _rowCursorY;
+        private float _scrollOffset;
+        private bool _scrollbarDragging;
         private RebindTarget _rebinding = RebindTarget.None;
         private Dictionary<string, bool> _rebindKeyWasDown;
-        private bool _showAdvanced;
 
         private GUIStyle _indicatorOnStyle;
         private GUIStyle _indicatorOffStyle;
+        private GUIStyle _scoreStyle;
+        private GUIStyle _stepperLabelStyle;
         private GUIStyle _titleStyle;
         private GUIStyle _sectionStyle;
         private GUIStyle _valueStyle;
-        private static Texture2D _backgroundTexture;
-        private static Texture2D _gripTexture;
+        private static Texture2D _solidTexture;
 
         public bool MenuOpen => _menuOpen;
 
         public void ToggleMenu()
         {
             _menuOpen = !_menuOpen;
+            if (_menuOpen)
+                EnsureDefaultWindowSize();
             _rebinding = RebindTarget.None;
             _rebindKeyWasDown = null;
+        }
+
+        // Sizes the window to fill most of the screen the first time it's ever opened, so the
+        // player isn't stuck manually resizing/scrolling through a small default just to see
+        // the whole Presets section at once. Only runs once per mod session (per _windowSizeInitialized) —
+        // resizing or moving the window afterwards is respected for as long as it stays open,
+        // exactly as before; this only changes what the very first size happens to be. Computed
+        // here (when the menu is actually being opened) rather than in the field initializer
+        // above, since Screen.width/height reflect the game's actual current resolution and
+        // this runs well after the game window exists, whereas a field initializer runs during
+        // construction, before that's guaranteed.
+        private void EnsureDefaultWindowSize()
+        {
+            if (_windowSizeInitialized)
+                return;
+            _windowSizeInitialized = true;
+
+            const float margin = 40f;
+            _windowRect.width = Mathf.Max(MinWindowWidth, Screen.width - margin * 2);
+            _windowRect.height = Mathf.Max(MinWindowHeight, Screen.height - margin * 2);
+            _windowRect.x = margin;
+            _windowRect.y = margin;
         }
 
         // Call once per IMGUI pass (i.e. from the loader's OnGUI callback).
@@ -70,6 +106,7 @@ namespace FastResetUpdated.Shared
         {
             DrawStatusIndicator();
             DrawItemPickerWindow();
+            DrawPresetPickerWindow();
 
             if (!_menuOpen)
                 return;
@@ -92,21 +129,64 @@ namespace FastResetUpdated.Shared
         // initialization.
         private void DrawStatusIndicator()
         {
-            if (!Config.ShowStatusIndicator)
-                return;
-
             if (_indicatorOnStyle == null)
             {
+                // Built off GUI.skin.label for its font/size, but every background is explicitly
+                // cleared: if the game's currently-active GUI skin has any box/background image
+                // assigned to its label style, GUIStyle's copy constructor would otherwise carry
+                // it straight into ours, which is what was showing as a solid bar behind the text.
                 _indicatorOnStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
                 _indicatorOnStyle.normal.textColor = Color.green;
+                ClearBackgrounds(_indicatorOnStyle);
 
                 _indicatorOffStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
                 _indicatorOffStyle.normal.textColor = new Color(1f, 0.35f, 0.35f);
+                ClearBackgrounds(_indicatorOffStyle);
+
+                _scoreStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+                ClearBackgrounds(_scoreStyle);
             }
 
-            bool enabled = Config.ModEnabled;
-            GUI.Label(new Rect(12, 12, 220, 24), enabled ? "Fast Reset: ON" : "Fast Reset: OFF",
-                enabled ? _indicatorOnStyle : _indicatorOffStyle);
+            if (Config.ShowStatusIndicator)
+            {
+                bool enabled = Config.ModEnabled;
+                GUI.Label(new Rect(12, 12, 220, 24), enabled ? "Fast Reset: ON" : "Fast Reset: OFF",
+                    enabled ? _indicatorOnStyle : _indicatorOffStyle);
+            }
+
+            // Independent toggle from ShowStatusIndicator above — sits right under it when both
+            // are on, or takes its spot at the top when the ON/OFF indicator itself is hidden.
+            if (Config.ShowMapScore)
+            {
+                float y = Config.ShowStatusIndicator ? 36 : 12;
+                string text = _currentMapScore < 0 ? "Map Score: --" : $"Map Score: {_currentMapScore}";
+                _scoreStyle.normal.textColor = _currentMapScore < 0
+                    ? new Color(0.75f, 0.75f, 0.75f)
+                    : MapScoreColor(_currentMapScore);
+                GUI.Label(new Rect(12, y, 220, 24), text, _scoreStyle);
+            }
+        }
+
+        // 0-50% red, 50-65% orange, 65-80% yellow, 80%+ green — matches the bands requested for
+        // the map-score display.
+        private static Color MapScoreColor(int score)
+        {
+            if (score < 50) return new Color(1f, 0.3f, 0.3f);
+            if (score < 65) return new Color(1f, 0.6f, 0.15f);
+            if (score < 80) return new Color(0.95f, 0.9f, 0.25f);
+            return new Color(0.35f, 0.9f, 0.35f);
+        }
+
+        private static void ClearBackgrounds(GUIStyle style)
+        {
+            style.normal.background = null;
+            style.hover.background = null;
+            style.active.background = null;
+            style.focused.background = null;
+            style.onNormal.background = null;
+            style.onHover.background = null;
+            style.onActive.background = null;
+            style.onFocused.background = null;
         }
 
         private void EnsureStyles()
@@ -123,27 +203,29 @@ namespace FastResetUpdated.Shared
             _valueStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter };
         }
 
-        private static Texture2D GetBackgroundTexture()
+        // A single reusable white 1x1 texture, tinted per draw via GUI.color — used for every
+        // solid-fill shape in both windows (background, borders, scrollbar, resize grip) rather
+        // than allocating a separate texture per color.
+        private static Texture2D GetSolidTexture()
         {
-            if (_backgroundTexture == null)
+            if (_solidTexture == null)
             {
-                _backgroundTexture = new Texture2D(1, 1);
-                _backgroundTexture.SetPixel(0, 0, new Color(0.05f, 0.05f, 0.07f, 0.97f));
-                _backgroundTexture.Apply();
+                _solidTexture = new Texture2D(1, 1);
+                _solidTexture.SetPixel(0, 0, Color.white);
+                _solidTexture.Apply();
             }
-            return _backgroundTexture;
+            return _solidTexture;
         }
 
-        private static Texture2D GetGripTexture()
+        private static void DrawSolidRect(Rect rect, Color color)
         {
-            if (_gripTexture == null)
-            {
-                _gripTexture = new Texture2D(1, 1);
-                _gripTexture.SetPixel(0, 0, new Color(0.6f, 0.6f, 0.65f, 0.9f));
-                _gripTexture.Apply();
-            }
-            return _gripTexture;
+            Color previous = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, GetSolidTexture());
+            GUI.color = previous;
         }
+
+        private static readonly Color BackgroundColor = new Color(0.05f, 0.05f, 0.07f, 0.97f);
 
         private void DrawWindow(int windowId)
         {
@@ -152,80 +234,32 @@ namespace FastResetUpdated.Shared
 
             Rect titleBarRect = new Rect(0, 0, _windowRect.width, Margin + TitleHeight);
             Rect gripRect = new Rect(_windowRect.width - GripSize, _windowRect.height - GripSize, GripSize, GripSize);
-            HandleWindowDragAndResize(titleBarRect, gripRect);
 
-            GUI.DrawTexture(new Rect(0, 0, _windowRect.width, _windowRect.height), GetBackgroundTexture());
+            DrawSolidRect(new Rect(0, 0, _windowRect.width, _windowRect.height), BackgroundColor);
 
             float contentWidth = _windowRect.width - Margin * 2;
-            _rowCursorY = Margin;
+            GUI.Label(new Rect(Margin, Margin, contentWidth, TitleHeight), "FastReset+", _titleStyle);
 
-            GUI.Label(new Rect(Margin, _rowCursorY, contentWidth, TitleHeight), "FastReset+", _titleStyle);
-            _rowCursorY += TitleHeight;
+            float viewportTop = Margin + TitleHeight;
+            float footerHeight = Margin + RowHeight + SectionGap;
+            Rect viewport = new Rect(Margin, viewportTop, contentWidth - ScrollbarWidth - 6,
+                _windowRect.height - viewportTop - footerHeight);
 
-            Config.ModEnabled = GUI.Toggle(NextRow(contentWidth), Config.ModEnabled,
-                $"Mod enabled  (toggle key: {Config.ToggleModKey})");
-            Config.ShowStatusIndicator = GUI.Toggle(NextRow(contentWidth), Config.ShowStatusIndicator,
-                "Show on-screen ON/OFF indicator");
-            DrawRebindRow(NextRow(contentWidth), "Toggle mod key", Config.ToggleModKey, RebindTarget.ToggleModKey);
-            DrawRebindRow(NextRow(contentWidth), "Open menu key", Config.ToggleMenuKey, RebindTarget.ToggleMenuKey);
+            float contentHeight = ComputeContentHeight();
+            float maxScroll = Mathf.Max(0, contentHeight - viewport.height);
+            _scrollOffset = Mathf.Clamp(_scrollOffset, 0, maxScroll);
 
-            _rowCursorY += SectionGap;
-            GUI.Label(NextRow(contentWidth), "Requisites  (hold Shift for a bigger step)", _sectionStyle);
-            Config.MinCombinedShadyAndMoai = IntStepper(NextRow(contentWidth), "Min combined Shady Guys + Moai",
-                Config.MinCombinedShadyAndMoai, 1, 5, 0, 999);
-            Config.MinLegendaryShadyCount = IntStepper(NextRow(contentWidth), "Min Legendary Shady Guys",
-                Config.MinLegendaryShadyCount, 1, 3, 0, 999);
-            Config.MinMicrowaveCount = IntStepper(NextRow(contentWidth), "Min Microwaves",
-                Config.MinMicrowaveCount, 1, 3, 0, 999);
-            Config.MaxAcceptableMicrowaveRarity = IntStepper(NextRow(contentWidth),
-                $"Max Microwave rarity ({RarityLabels.NameFor(Config.MaxAcceptableMicrowaveRarity)})",
-                Config.MaxAcceptableMicrowaveRarity, 1, 1, 0, RarityLabels.Names.Length - 1);
+            HandleScrollWheel(viewport, maxScroll);
 
-            _rowCursorY += SectionGap;
-            GUI.Label(NextRow(contentWidth), "Legendary Surge", _sectionStyle);
-            Config.EnableLegendarySurge = GUI.Toggle(NextRow(contentWidth), Config.EnableLegendarySurge,
-                "Enough Legendary Shady Guys relaxes the requisites above");
-            if (Config.EnableLegendarySurge)
-            {
-                Config.LegendarySurgeThreshold = IntStepper(NextRow(contentWidth), "Legendary Shady Guys needed",
-                    Config.LegendarySurgeThreshold, 1, 3, 1, 999);
-                Config.LegendarySurgeCombinedReduction = IntStepper(NextRow(contentWidth), "Reduce combined requirement by",
-                    Config.LegendarySurgeCombinedReduction, 1, 3, 0, 999);
-                Config.LegendarySurgeMicrowaveReduction = IntStepper(NextRow(contentWidth), "Reduce microwave requirement by",
-                    Config.LegendarySurgeMicrowaveReduction, 1, 2, 0, 999);
-            }
+            GUI.BeginGroup(viewport);
+            _rowCursorY = -_scrollOffset;
+            DrawScrollableContent(viewport.width);
+            GUI.EndGroup();
 
-            _rowCursorY += SectionGap;
-            GUI.Label(NextRow(contentWidth), "Required Item", _sectionStyle);
-            Config.RequireSpecificLegendaryItem = GUI.Toggle(NextRow(contentWidth), Config.RequireSpecificLegendaryItem,
-                "Require a specific Legendary item from a Shady Guy");
-            if (Config.RequireSpecificLegendaryItem)
-            {
-                Rect itemRow = NextRow(contentWidth);
-                Rect labelRect = new Rect(itemRow.x, itemRow.y, itemRow.width - RebindButtonWidth - 8, itemRow.height);
-                Rect buttonRect = new Rect(itemRow.xMax - RebindButtonWidth, itemRow.y, RebindButtonWidth, itemRow.height);
-                string itemLabel = string.IsNullOrEmpty(Config.RequiredLegendaryItemName)
-                    ? "Item: (none selected)"
-                    : $"Item: {Config.RequiredLegendaryItemName}";
-                GUI.Label(labelRect, itemLabel);
-                if (GUI.Button(buttonRect, "Choose..."))
-                    OpenItemPicker();
-            }
+            Rect scrollbarTrack = new Rect(viewport.xMax + 6, viewport.y, ScrollbarWidth, viewport.height);
+            DrawScrollbar(scrollbarTrack, contentHeight, viewport.height, maxScroll);
 
-            _rowCursorY += SectionGap;
-            _showAdvanced = GUI.Toggle(NextRow(contentWidth), _showAdvanced, "Advanced");
-            if (_showAdvanced)
-            {
-                Config.LegendaryRarityValue = IntStepper(NextRow(contentWidth), "Rarity value counted as \"Legendary\"",
-                    Config.LegendaryRarityValue, 1, 1, 0, RarityLabels.Names.Length - 1);
-                Config.CheckWindowStartSeconds = FloatStepper(NextRow(contentWidth), "Check window start (s)",
-                    Config.CheckWindowStartSeconds, 0.1f, 0.5f, 0f, 60f);
-                Config.CheckWindowEndSeconds = FloatStepper(NextRow(contentWidth), "Check window end (s)",
-                    Config.CheckWindowEndSeconds, 0.1f, 0.5f, 0f, 60f);
-            }
-
-            _rowCursorY += SectionGap;
-            Rect buttonsRow = NextRow(contentWidth);
+            Rect buttonsRow = new Rect(Margin, _windowRect.height - Margin - RowHeight, contentWidth, RowHeight);
             float buttonWidth = (buttonsRow.width - 16) / 3f;
             Rect saveRect = new Rect(buttonsRow.x, buttonsRow.y, buttonWidth, buttonsRow.height);
             Rect resetRect = new Rect(saveRect.xMax + 8, buttonsRow.y, buttonWidth, buttonsRow.height);
@@ -237,16 +271,227 @@ namespace FastResetUpdated.Shared
             if (GUI.Button(closeRect, "Close"))
                 _menuOpen = false;
 
-            GUI.DrawTexture(gripRect, GetGripTexture());
+            // Drag/resize is handled last so the resize grip visually sits on top of everything
+            // else, and so a click there isn't also consumed by whatever's underneath it.
+            HandleWindowDragAndResize(titleBarRect, gripRect);
+            DrawResizeGrip(gripRect);
+        }
+
+        // Everything that scrolls: toggles, rebind rows, requisites, Legendary Surge, and the
+        // required-item row. Drawn inside a GUI.BeginGroup (see DrawWindow), so all coordinates
+        // here are relative to the viewport's top-left, not the window's.
+        private void DrawScrollableContent(float width)
+        {
+            Config.ModEnabled = GUI.Toggle(NextRow(width), Config.ModEnabled,
+                $"Mod enabled  (toggle key: {Config.ToggleModKey})");
+            Config.ShowStatusIndicator = GUI.Toggle(NextRow(width), Config.ShowStatusIndicator,
+                "Show on-screen ON/OFF indicator");
+            Config.ShowMapScore = GUI.Toggle(NextRow(width), Config.ShowMapScore,
+                "Show map score (0-100, updates each new run)");
+            Config.AcceptableMapScore = IntStepper(NextRow(width), "Acceptable map score",
+                Config.AcceptableMapScore, 5, 25, 0, 100);
+            DrawRebindRow(NextRow(width), "Toggle mod key", Config.ToggleModKey, RebindTarget.ToggleModKey);
+            DrawRebindRow(NextRow(width), "Open menu key", Config.ToggleMenuKey, RebindTarget.ToggleMenuKey);
+
+            _rowCursorY += SectionGap;
+            GUI.Label(NextRow(width), "Requisites  (hold Shift for a bigger step)", _sectionStyle);
+            Config.UseSeparateShadyAndMoaiCounts = GUI.Toggle(NextRow(width), Config.UseSeparateShadyAndMoaiCounts,
+                "Track Shady Guys and Moai separately");
+            if (Config.UseSeparateShadyAndMoaiCounts)
+            {
+                Config.MinShadyGuyCount = IntStepper(NextRow(width), "Min Shady Guys",
+                    Config.MinShadyGuyCount, 1, 3, 0, 999);
+                Config.MinMoaiCount = IntStepper(NextRow(width), "Min Moai Shrines",
+                    Config.MinMoaiCount, 1, 3, 0, 999);
+            }
+            else
+            {
+                Config.MinCombinedShadyAndMoai = IntStepper(NextRow(width), "Min combined Shady Guys + Moai",
+                    Config.MinCombinedShadyAndMoai, 1, 5, 0, 999);
+            }
+            Config.MinLegendaryShadyCount = IntStepper(NextRow(width), "Min Legendary Shady Guys",
+                Config.MinLegendaryShadyCount, 1, 3, 0, 999);
+            Config.MinMicrowaveCount = IntStepper(NextRow(width), "Min Microwaves",
+                Config.MinMicrowaveCount, 1, 3, 0, 999);
+            Config.MaxAcceptableMicrowaveRarity = IntStepper(NextRow(width),
+                $"Max Microwave rarity ({RarityLabels.NameFor(Config.MaxAcceptableMicrowaveRarity)})",
+                Config.MaxAcceptableMicrowaveRarity, 1, 1, 0, RarityLabels.Names.Length - 1);
+            Config.MinBossCurseCount = IntStepper(NextRow(width), "Min Boss Curses",
+                Config.MinBossCurseCount, 1, 3, 0, 999);
+            Config.MinLegendaryChargeShrineCount = IntStepper(NextRow(width), "Min Legendary Charge Shrines",
+                Config.MinLegendaryChargeShrineCount, 1, 3, 0, 999);
+
+            _rowCursorY += SectionGap;
+            GUI.Label(NextRow(width), "Legendary Surge", _sectionStyle);
+            Config.EnableLegendarySurge = GUI.Toggle(NextRow(width), Config.EnableLegendarySurge,
+                "Enough Legendary Shady Guys relaxes the requisites above");
+            if (Config.EnableLegendarySurge)
+            {
+                Config.LegendarySurgeThreshold = IntStepper(NextRow(width), "Legendary Shady Guys needed",
+                    Config.LegendarySurgeThreshold, 1, 3, 1, 999);
+                string combinedReductionLabel = Config.UseSeparateShadyAndMoaiCounts
+                    ? "Shady/Moai reduction (each)"
+                    : "Reduce combined requirement by";
+                Config.LegendarySurgeCombinedReduction = IntStepper(NextRow(width), combinedReductionLabel,
+                    Config.LegendarySurgeCombinedReduction, 1, 3, 0, 999);
+                Config.LegendarySurgeMicrowaveReduction = IntStepper(NextRow(width), "Reduce microwave requirement by",
+                    Config.LegendarySurgeMicrowaveReduction, 1, 2, 0, 999);
+            }
+
+            _rowCursorY += SectionGap;
+            GUI.Label(NextRow(width), "Required Item", _sectionStyle);
+            Config.RequireSpecificLegendaryItem = GUI.Toggle(NextRow(width), Config.RequireSpecificLegendaryItem,
+                "Require a specific Legendary item from a Shady Guy");
+            if (Config.RequireSpecificLegendaryItem)
+            {
+                Rect itemRow = NextRow(width);
+                const float clearWidth = 56f;
+                const float buttonGap = 6f;
+                Rect labelRect = new Rect(itemRow.x, itemRow.y,
+                    itemRow.width - RebindButtonWidth - clearWidth - buttonGap * 2, itemRow.height);
+                Rect chooseRect = new Rect(itemRow.xMax - RebindButtonWidth, itemRow.y, RebindButtonWidth, itemRow.height);
+                Rect clearRect = new Rect(chooseRect.x - buttonGap - clearWidth, itemRow.y, clearWidth, itemRow.height);
+                string itemLabel = string.IsNullOrEmpty(Config.RequiredLegendaryItemName)
+                    ? "Item: (none selected)"
+                    : $"Item: {Config.RequiredLegendaryItemName}";
+                GUI.Label(labelRect, itemLabel, _stepperLabelStyle);
+                if (GUI.Button(clearRect, "Clear"))
+                {
+                    Config.RequiredLegendaryItemName = string.Empty;
+                    SaveConfig();
+                }
+                if (GUI.Button(chooseRect, "Choose..."))
+                    OpenItemPicker();
+            }
+
+            _rowCursorY += SectionGap;
+            GUI.Label(NextRow(width), "Presets", _sectionStyle);
+
+            Rect activeRow = NextRow(width);
+            Rect switchRect = new Rect(activeRow.xMax - RebindButtonWidth, activeRow.y, RebindButtonWidth, activeRow.height);
+            Rect activeLabelRect = new Rect(activeRow.x, activeRow.y, activeRow.width - RebindButtonWidth - 8, activeRow.height);
+            GUI.Label(activeLabelRect, $"Active preset: {_activePresetName}", _stepperLabelStyle);
+            if (GUI.Button(switchRect, "Switch..."))
+                OpenPresetPicker();
+
+            Rect saveRow = NextRow(width);
+            if (PresetStore.IsDefault(_activePresetName))
+            {
+                if (GUI.Button(saveRow, "Save current settings as new preset..."))
+                    OpenPresetPicker(startInSaveAsMode: true);
+            }
+            else
+            {
+                float halfWidth = (saveRow.width - 8) / 2f;
+                Rect updateRect = new Rect(saveRow.x, saveRow.y, halfWidth, saveRow.height);
+                Rect saveAsRect = new Rect(updateRect.xMax + 8, saveRow.y, halfWidth, saveRow.height);
+                if (GUI.Button(updateRect, $"Update '{_activePresetName}'"))
+                    UpdateActivePreset();
+                if (GUI.Button(saveAsRect, "Save As New..."))
+                    OpenPresetPicker(startInSaveAsMode: true);
+            }
+        }
+
+        // Mirrors DrawScrollableContent's row layout exactly — kept as a separate analytical
+        // pass (rather than measuring the real draw call) since IMGUI has no "measure without
+        // drawing" primitive; if a row is ever added to one, it must be added to the other.
+        private float ComputeContentHeight()
+        {
+            int rows = 6; // mod toggle, indicator toggle, map-score toggle, acceptable-score stepper, 2 rebind rows
+            // "Requisites" label + separate-mode toggle + (combined: 1 row, separate: 2 rows) +
+            // 5 fixed fields (Legendary Shady, Microwaves, Microwave rarity, Boss Curses, Legendary Charge Shrines)
+            rows += 1 + 1 + (Config.UseSeparateShadyAndMoaiCounts ? 2 : 1) + 5;
+            rows += 1 + 1; // "Legendary Surge" label + enable toggle
+            if (Config.EnableLegendarySurge)
+                rows += 3;
+            rows += 1 + 1; // "Required Item" label + enable toggle
+            if (Config.RequireSpecificLegendaryItem)
+                rows += 1;
+            rows += 1 + 1 + 1; // "Presets" label + active/switch row + save-buttons row
+
+            float rowsHeight = rows * (RowHeight + RowSpacing);
+            float gaps = SectionGap * 4;
+            return rowsHeight + gaps;
+        }
+
+        private void HandleScrollWheel(Rect viewportInWindowSpace, float maxScroll)
+        {
+            Event e = Event.current;
+            if (e == null || e.type != EventType.ScrollWheel)
+                return;
+            if (!viewportInWindowSpace.Contains(e.mousePosition))
+                return;
+
+            _scrollOffset = Mathf.Clamp(_scrollOffset + e.delta.y * 20f, 0, maxScroll);
+            e.Use();
+        }
+
+        private void DrawScrollbar(Rect trackRect, float contentHeight, float viewportHeight, float maxScroll)
+        {
+            DrawSolidRect(trackRect, new Color(1f, 1f, 1f, 0.06f));
+
+            if (contentHeight <= viewportHeight)
+                return;
+
+            float thumbHeightRatio = Mathf.Clamp01(viewportHeight / contentHeight);
+            float thumbHeight = Mathf.Max(20f, trackRect.height * thumbHeightRatio);
+            float scrollRatio = maxScroll > 0f ? _scrollOffset / maxScroll : 0f;
+            float thumbY = trackRect.y + scrollRatio * (trackRect.height - thumbHeight);
+            Rect thumbRect = new Rect(trackRect.x, thumbY, trackRect.width, thumbHeight);
+
+            DrawSolidRect(thumbRect, _scrollbarDragging ? new Color(1f, 1f, 1f, 0.55f) : new Color(1f, 1f, 1f, 0.35f));
+
+            Event e = Event.current;
+            if (e == null)
+                return;
+
+            if (e.type == EventType.MouseDown && thumbRect.Contains(e.mousePosition))
+            {
+                _scrollbarDragging = true;
+                e.Use();
+            }
+            else if (e.type == EventType.MouseDrag && _scrollbarDragging)
+            {
+                float trackRange = trackRect.height - thumbHeight;
+                if (trackRange > 0.01f)
+                {
+                    float deltaRatio = e.delta.y / trackRange;
+                    _scrollOffset = Mathf.Clamp(_scrollOffset + deltaRatio * maxScroll, 0, maxScroll);
+                }
+                e.Use();
+            }
+            else if (e.type == EventType.MouseUp)
+            {
+                _scrollbarDragging = false;
+            }
+        }
+
+        // Classic three-row diagonal dot grid (the same shape Windows/macOS use for a
+        // window's resize handle), built from six small solid-color rects rather than a custom
+        // texture — reuses the same already-proven GUI.DrawTexture + GUI.color path as
+        // everything else instead of introducing per-pixel texture editing.
+        private static void DrawResizeGrip(Rect gripRect)
+        {
+            Color dot = new Color(0.85f, 0.85f, 0.9f, 0.9f);
+            const float dotSize = 2f;
+            const float spacing = 4f;
+            const float margin = 3f;
+
+            for (int row = 0; row < 3; row++)
+            {
+                for (int col = 0; col <= row; col++)
+                {
+                    float x = gripRect.xMax - margin - col * spacing - dotSize;
+                    float y = gripRect.yMax - margin - row * spacing - dotSize;
+                    DrawSolidRect(new Rect(x, y, dotSize, dotSize), dot);
+                }
+            }
         }
 
         // Moving and resizing are both handled by hand (mutating _windowRect directly) rather
-        // than via GUI.Window's built-in title-bar dragging, since we never verified that path
-        // works on this build and IMGUI has no built-in resize at all. Event.current gives
-        // window-local mouse coordinates and per-event deltas here, which is the same
-        // mechanism GUI.Button/Toggle already rely on for their own hit-testing (confirmed
-        // working — clicks register correctly), so this reuses an already-proven pathway
-        // rather than introducing an entirely new one.
+        // than via GUI.Window's built-in title-bar dragging, since IMGUI has no built-in resize
+        // at all and this reuses the same Event.current mechanism GUI.Button/Toggle already use
+        // for their own hit-testing.
         private void HandleWindowDragAndResize(Rect titleBarRect, Rect gripRect)
         {
             Event e = Event.current;
@@ -290,7 +535,7 @@ namespace FastResetUpdated.Shared
 
         private Rect NextRow(float width)
         {
-            Rect row = new Rect(Margin, _rowCursorY, width, RowHeight);
+            Rect row = new Rect(0, _rowCursorY, width, RowHeight);
             _rowCursorY += RowHeight + RowSpacing;
             return row;
         }
@@ -310,8 +555,7 @@ namespace FastResetUpdated.Shared
         // captured as the new binding. Uses the same Win32-based polling as the toggle
         // hotkeys (see Win32Input.cs) rather than Unity's Event/Input system, for the same
         // reason: Megabonk's Rewired-based input handling appears to swallow Unity's own key
-        // detection entirely for gameplay hotkeys, and there's no reason to assume the same
-        // Win32 polling isn't simplest/most consistent choice here too.
+        // detection entirely for gameplay hotkeys.
         private void HandleRebindCapture()
         {
             if (_rebinding == RebindTarget.None)
@@ -358,6 +602,17 @@ namespace FastResetUpdated.Shared
         // the two given steps.
         private int IntStepper(Rect row, string label, int value, int smallStep, int largeStep, int min, int max)
         {
+            if (_stepperLabelStyle == null)
+            {
+                // wordWrap off + Clip: a label text too long for LabelColumnWidth is cut off
+                // instead of wrapping onto a second line and bleeding into the row below (this
+                // is exactly what happened with the Legendary Surge reduction label). Clipping a
+                // label is a much less noticeable failure than a broken layout, and this makes
+                // the whole class of bug impossible rather than just fixing today's instance.
+                _stepperLabelStyle = new GUIStyle(GUI.skin.label) { wordWrap = false, clipping = TextClipping.Clip };
+                ClearBackgrounds(_stepperLabelStyle);
+            }
+
             Rect labelRect = new Rect(row.x, row.y, LabelColumnWidth, row.height);
             float stepperWidth = row.width - LabelColumnWidth;
             float valueWidth = stepperWidth - StepperButtonWidth * 2 - 8;
@@ -366,31 +621,10 @@ namespace FastResetUpdated.Shared
             Rect valueRect = new Rect(minusRect.xMax + 4, row.y, valueWidth, row.height);
             Rect plusRect = new Rect(valueRect.xMax + 4, row.y, StepperButtonWidth, row.height);
 
-            GUI.Label(labelRect, label);
+            GUI.Label(labelRect, label, _stepperLabelStyle);
             GUI.Label(valueRect, value.ToString(), _valueStyle);
 
             int step = Win32Input.IsShiftDown() ? largeStep : smallStep;
-            if (GUI.Button(minusRect, "-"))
-                value = Mathf.Clamp(value - step, min, max);
-            if (GUI.Button(plusRect, "+"))
-                value = Mathf.Clamp(value + step, min, max);
-            return value;
-        }
-
-        private float FloatStepper(Rect row, string label, float value, float smallStep, float largeStep, float min, float max)
-        {
-            Rect labelRect = new Rect(row.x, row.y, LabelColumnWidth, row.height);
-            float stepperWidth = row.width - LabelColumnWidth;
-            float valueWidth = stepperWidth - StepperButtonWidth * 2 - 8;
-
-            Rect minusRect = new Rect(row.xMax - stepperWidth, row.y, StepperButtonWidth, row.height);
-            Rect valueRect = new Rect(minusRect.xMax + 4, row.y, valueWidth, row.height);
-            Rect plusRect = new Rect(valueRect.xMax + 4, row.y, StepperButtonWidth, row.height);
-
-            GUI.Label(labelRect, label);
-            GUI.Label(valueRect, value.ToString("0.0#"), _valueStyle);
-
-            float step = Win32Input.IsShiftDown() ? largeStep : smallStep;
             if (GUI.Button(minusRect, "-"))
                 value = Mathf.Clamp(value - step, min, max);
             if (GUI.Button(plusRect, "+"))
