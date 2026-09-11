@@ -1,7 +1,7 @@
-using FastResetUpdated.Shared;
+using BetterBonk.Shared;
 using MelonLoader;
 
-namespace FastResetUpdated.MelonLoader
+namespace BetterBonk.MelonLoader
 {
     public sealed class MelonLoaderLogger : IModLogger
     {

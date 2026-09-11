@@ -6,52 +6,39 @@ using System.Text.Json;
 
 namespace BetterBonk.Shared
 {
-    // Named FilterConfig snapshots the player can switch between, saved as individual JSON
-    // files in a "Presets" subfolder next to the main settings file. "Default" is always
-    // present in the list and always resolves to FilterConfig.CreateDefault() rather than a
-    // saved file, so there's always an unmodifiable, always-available baseline to switch back
-    // to no matter what's been saved over the player's own named presets — it can't be
-    // overwritten or deleted through this class.
+    // Named snapshots of which achievements/unlockables are currently toggled OFF via Toggle
+    // Everything, saved as individual JSON files in a "ToggleEverythingPresets" subfolder next
+    // to the main settings file. Deliberately a separate store from PresetStore (which snapshots
+    // FilterConfig) rather than a generalization of it: the two save completely different kinds
+    // of state, live in different folders, and track a different "active preset" marker, so
+    // keeping them independent avoids the two ever accidentally interacting, at the cost of some
+    // duplicated shape between this file and PresetStore.cs.
     //
-    // Which preset is "active" is tracked separately (see LoadActivePresetName/
-    // SaveActivePresetName) as a single line in its own small file rather than as a field on
-    // FilterConfig itself — a FilterConfig is also what gets serialized INTO each preset file,
-    // so a field there would end up recording (and being overwritten by) whichever preset was
-    // active when that preset was last saved, which isn't what it means. This class treats the
-    // active-preset name purely as a UI label of "which preset the current settings came from
-    // last" — it's best-effort and cosmetic, never re-validated against the actual current
-    // FilterConfig contents, since the player is free to tweak settings after loading a preset
-    // without that meaning the preset itself changed.
-    public sealed class PresetStore
+    // "Default" is always present in the list and always resolves to an empty snapshot (nothing
+    // toggled off — Toggle Everything's own unmodified baseline) rather than a saved file, same
+    // as PresetStore's "Default" always being FilterConfig.CreateDefault(). It can't be
+    // overwritten or deleted through this class.
+    public sealed class ToggleEverythingPresetStore
     {
         public const string DefaultPresetName = "Default";
-
-        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
 
         private readonly string _presetsDirectory;
         private readonly string _activePresetFilePath;
         private readonly IModLogger _logger;
 
-        public PresetStore(string configDirectory, IModLogger logger)
+        public ToggleEverythingPresetStore(string configDirectory, IModLogger logger)
         {
             _logger = logger;
-            _presetsDirectory = Path.Combine(configDirectory, "Presets");
+            _presetsDirectory = Path.Combine(configDirectory, "ToggleEverythingPresets");
             Directory.CreateDirectory(_presetsDirectory);
-            _activePresetFilePath = Path.Combine(configDirectory, "BetterBonk.activepreset.txt");
+            _activePresetFilePath = Path.Combine(configDirectory, "BetterBonk.activetoggleeverythingpreset.txt");
         }
 
         public static bool IsDefault(string name) =>
             string.Equals(name, DefaultPresetName, StringComparison.OrdinalIgnoreCase);
 
-        // Strips characters that can't appear in a filename and trims whitespace, so whatever a
-        // player types in the "Save As" box can never produce a bad path or land outside the
-        // presets folder. Callers should sanitize once and reuse the result (for both the save
-        // itself and whatever they display/remember as the active preset name) rather than
-        // sanitizing again at each use — sanitizing twice is harmless (it's idempotent) but
-        // reusing the same value avoids the two ever silently drifting apart.
+        // Same rationale as PresetStore.SanitizeName — strips filename-invalid characters so
+        // whatever's typed in the "Save As" box can never produce a bad path.
         public static string SanitizeName(string rawName)
         {
             if (string.IsNullOrWhiteSpace(rawName))
@@ -80,56 +67,55 @@ namespace BetterBonk.Shared
             }
             catch (Exception ex)
             {
-                _logger.Warning($"BetterBonk: failed to list presets ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to list Toggle Everything presets ({ex.Message}).");
             }
             return names;
         }
 
-        public FilterConfig Load(string name)
+        // Null on a real failure (bad JSON, read error) — distinguished from "Default", which
+        // returns a fresh empty list every time rather than null, so a caller can always tell
+        // "nothing to load" apart from "here's an intentionally empty preset".
+        public List<string> Load(string name)
         {
             if (IsDefault(name))
-                return FilterConfig.CreateDefault();
+                return new List<string>();
 
             try
             {
                 string path = PathFor(name);
                 if (!File.Exists(path))
                 {
-                    _logger.Warning($"BetterBonk: preset '{name}' not found.");
+                    _logger.Warning($"BetterBonk: Toggle Everything preset '{name}' not found.");
                     return null;
                 }
 
                 string json = File.ReadAllText(path);
-                return JsonSerializer.Deserialize<FilterConfig>(json, JsonOptions) ?? FilterConfig.CreateDefault();
+                return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
             }
             catch (Exception ex)
             {
-                _logger.Warning($"BetterBonk: failed to load preset '{name}' ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to load Toggle Everything preset '{name}' ({ex.Message}).");
                 return null;
             }
         }
 
-        // Refuses an empty name or "Default" — Default is meant to always be the mod's own
-        // baseline, never something a saved config can silently replace. A name that already
-        // matches an existing preset is overwritten without confirmation, the same one-click
-        // way "Reset to Defaults" already works in this menu.
-        public bool Save(string name, FilterConfig config)
+        public bool Save(string name, List<string> inactivatedNames)
         {
             if (string.IsNullOrEmpty(name) || IsDefault(name))
             {
-                _logger.Warning("BetterBonk: preset name can't be empty or 'Default'.");
+                _logger.Warning("BetterBonk: Toggle Everything preset name can't be empty or 'Default'.");
                 return false;
             }
 
             try
             {
-                string json = JsonSerializer.Serialize(config, JsonOptions);
+                string json = JsonSerializer.Serialize(inactivatedNames ?? new List<string>());
                 File.WriteAllText(PathFor(name), json);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.Warning($"BetterBonk: failed to save preset '{name}' ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to save Toggle Everything preset '{name}' ({ex.Message}).");
                 return false;
             }
         }
@@ -147,7 +133,7 @@ namespace BetterBonk.Shared
             }
             catch (Exception ex)
             {
-                _logger.Warning($"BetterBonk: failed to delete preset '{name}' ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to delete Toggle Everything preset '{name}' ({ex.Message}).");
             }
         }
 
@@ -164,7 +150,7 @@ namespace BetterBonk.Shared
             }
             catch (Exception ex)
             {
-                _logger.Warning($"BetterBonk: failed to read active preset marker ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to read active Toggle Everything preset marker ({ex.Message}).");
             }
             return DefaultPresetName;
         }
@@ -177,7 +163,7 @@ namespace BetterBonk.Shared
             }
             catch (Exception ex)
             {
-                _logger.Warning($"BetterBonk: failed to save active preset marker ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to save active Toggle Everything preset marker ({ex.Message}).");
             }
         }
 

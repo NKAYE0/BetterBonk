@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <AssemblyName>FastResetUpdated</AssemblyName>
-    <RootNamespace>FastResetUpdated.BepInEx</RootNamespace>
+    <AssemblyName>BetterBonk</AssemblyName>
+    <RootNamespace>BetterBonk.BepInEx</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,6 +40,15 @@
       <HintPath>$(BepInExDir)\interop\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Toggle Everything presets read/write SaveManager.Instance.progression.inactivated, which
+         is an Il2CppSystem.Collections.Generic.HashSet<string> (confirmed via signature lookup
+         against Assembly-CSharp.dll, and by the exact build error naming it on the MelonLoader
+         side). Mirrored here on the same not-yet-confirmed-against-your-install basis as
+         Unity.TextMeshPro below — check the real filename under interop\ once BepInEx exists. -->
+    <Reference Include="Il2CppSystem.Core">
+      <HintPath>$(BepInExDir)\interop\Il2CppSystem.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(BepInExDir)\interop\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
@@ -56,12 +65,41 @@
       <HintPath>$(BepInExDir)\interop\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Needed by Personal Leaderboard's TMP_Text label and Button/onClick usage. On the
+         MelonLoader side the TextMeshPro interop DLL turned out to keep Unity's own assembly
+         filename (Unity.TextMeshPro.dll) rather than "Il2CppTMPro.dll" despite exposing the
+         Il2CppTMPro namespace — mirrored here on the assumption BepInEx's IL2CppInterop step
+         names it the same way, but your BepInEx install doesn't have an interop\ folder yet
+         (core\ and interop\ are both still missing), so this hasn't been confirmed. Once BepInEx
+         is actually installed, check the real filename under interop\ and fix the HintPath if
+         it differs. -->
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(BepInExDir)\interop\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(BepInExDir)\interop\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Toggle Everything reuses this compiled DLL directly (author-authorized exact-code
+         reuse — see ModToggleEverything.cs for why this wasn't hand-transcribed instead).
+         Private is left at its default (true) so it's copied into this project's own output
+         folder, and CopyToPlugins below carries it the rest of the way into the plugins
+         folder alongside our own DLL. -->
+    <Reference Include="MegabonkToggleEverything">
+      <HintPath>..\..\lib\MegabonkToggleEverything.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <!-- Drop the built mod straight into BepInEx\plugins once BepInExDir is set in
-       FastReset.local.props. -->
+       FastReset.local.props. MegabonkToggleEverything.dll rides along in the same
+       subfolder as this mod's own DLL — it has no BepInEx plugin class of its own, so
+       BepInEx's plugin scan will skip it as a plugin, but it still needs to be sitting
+       somewhere BepInEx's assembly resolution can find it when our code references its
+       types (see ModToggleEverything.cs for the not-yet-build-confirmed caveat on this). -->
   <Target Name="CopyToPlugins" AfterTargets="Build" Condition="'$(BepInExDir)' != ''">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\FastResetUpdated" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\BetterBonk" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\..\lib\MegabonkToggleEverything.dll" DestinationFolder="$(BepInExDir)\plugins\BetterBonk" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

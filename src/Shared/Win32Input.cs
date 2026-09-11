@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // Megabonk uses Rewired for its own input handling, which prevents
     // UnityEngine.Input.GetKeyDown from ever detecting a keypress in practice (confirmed:

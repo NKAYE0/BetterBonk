@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <AssemblyName>FastResetUpdated</AssemblyName>
-    <RootNamespace>FastResetUpdated.MelonLoader</RootNamespace>
+    <AssemblyName>BetterBonk</AssemblyName>
+    <RootNamespace>BetterBonk.MelonLoader</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +31,14 @@
       <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Toggle Everything presets read/write SaveManager.Instance.progression.inactivated, which
+         is an Il2CppSystem.Collections.Generic.HashSet<string> (confirmed via signature lookup
+         against Assembly-CSharp.dll) — that generic type itself lives in this assembly, not
+         Il2Cppmscorlib, confirmed by the exact build error naming it. -->
+    <Reference Include="Il2CppSystem.Core">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\Il2CppSystem.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
@@ -51,12 +59,42 @@
       <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Needed by Personal Leaderboard's TMP_Text label and Button/onClick usage. The TextMeshPro
+         interop DLL keeps Unity's own assembly filename (Unity.TextMeshPro.dll) even though the
+         C# namespace it exposes is Il2CppTMPro — confirmed against the actual Il2CppAssemblies
+         folder contents. UnityEngine.UI.dll's filename matches its namespace directly. -->
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Toggle Everything reuses this compiled DLL directly (author-authorized exact-code
+         reuse — see ModToggleEverything.cs for why this wasn't hand-transcribed instead).
+         Private is left at its default (true) so it's copied into this project's own output
+         folder; it still needs to end up in MelonLoader's UserLibs folder at runtime, which
+         CopyToUserLibs below handles. -->
+    <Reference Include="MegabonkToggleEverything">
+      <HintPath>..\..\lib\MegabonkToggleEverything.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <!-- Drop the built mod straight into the game's Mods folder once MelonLoaderDir is set
        in FastReset.local.props, so "build" is the whole install step. -->
   <Target Name="CopyToMods" AfterTargets="Build" Condition="'$(MelonLoaderDir)' != ''">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MelonLoaderDir)\..\Mods" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- MegabonkToggleEverything.dll must NOT land in Mods itself — it contains its own real
+       MelonMod class, and MelonLoader would load that as a second, always-on copy of this
+       feature alongside our own toggle-gated one. UserLibs is MelonLoader's folder for exactly
+       this situation: DLLs a mod depends on that shouldn't be loaded as mods in their own
+       right. (This placement isn't yet confirmed against a real build — see the comment at the
+       top of ModToggleEverything.cs.) -->
+  <Target Name="CopyToUserLibs" AfterTargets="Build" Condition="'$(MelonLoaderDir)' != ''">
+    <Copy SourceFiles="..\..\lib\MegabonkToggleEverything.dll" DestinationFolder="$(MelonLoaderDir)\..\UserLibs" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

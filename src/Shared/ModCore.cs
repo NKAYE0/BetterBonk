@@ -4,12 +4,14 @@ using Il2Cpp;
 using Il2CppAssets.Scripts.Inventory__Items__Pickups.Items;
 using UnityEngine;
 
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
-    // Core Fast Reset logic, compiled identically into both the MelonLoader and BepInEx builds
-    // (see each project's .csproj — this file is included from ..\Shared, it is not its own
-    // assembly). A loader entry point owns one instance of this class and calls OnUpdate() every
-    // frame, and OnGUI() every IMGUI pass while the settings window should be able to draw.
+    // Core of the BetterBonk mod, compiled identically into both the MelonLoader and BepInEx
+    // builds (see each project's .csproj — this file is included from ..\Shared, it is not its
+    // own assembly). A loader entry point owns one instance of this class and calls OnUpdate()
+    // every frame, and OnGUI() every IMGUI pass while the settings window should be able to
+    // draw. This file holds the Quick Reset feature (BetterBonk's first and default tab); the
+    // other features live in their own partial-class files alongside this one.
     //
     // The requisite-checking logic in RunSpawnCheckIfDue/CheckSpawns is a direct, verified port
     // of the original Fast Reset mod (by mzzJuice) — decompiled to confirm the exact game hooks,
@@ -46,8 +48,15 @@ namespace FastResetUpdated.Shared
         private bool _toggleModKeyWasDown;
         private bool _toggleMenuKeyWasDown;
 
+        // Only ever one ModCore instance per process (each loader entry point constructs
+        // exactly one). Harmony prefix/postfix methods and UI click handlers must be static
+        // methods, so this is how those (see ModLeaderboard.cs) reach back into the current
+        // instance's Config/_logger/_configStore rather than needing their own copies of them.
+        private static ModCore _instance;
+
         public ModCore(IModLogger logger, ConfigStore configStore)
         {
+            _instance = this;
             _logger = logger;
             _configStore = configStore;
             Config = _configStore.Load();
@@ -73,7 +82,7 @@ namespace FastResetUpdated.Shared
             SaveConfig();
             _activePresetName = PresetStore.DefaultPresetName;
             _presetStore.SaveActivePresetName(_activePresetName);
-            _logger.Msg("FastReset+: settings reset to defaults.");
+            _logger.Msg("BetterBonk: settings reset to defaults.");
         }
 
         // Replaces the current settings wholesale with the named preset's (Config is a brand
@@ -91,7 +100,7 @@ namespace FastResetUpdated.Shared
             SaveConfig();
             _activePresetName = name;
             _presetStore.SaveActivePresetName(_activePresetName);
-            _logger.Msg($"FastReset+: switched to preset '{name}'.");
+            _logger.Msg($"BetterBonk: switched to preset '{name}'.");
         }
 
         // Saves the CURRENT settings as a new (or overwritten) named preset and makes it the
@@ -106,7 +115,7 @@ namespace FastResetUpdated.Shared
 
             _activePresetName = name;
             _presetStore.SaveActivePresetName(_activePresetName);
-            _logger.Msg($"FastReset+: saved current settings as preset '{name}'.");
+            _logger.Msg($"BetterBonk: saved current settings as preset '{name}'.");
             return true;
         }
 
@@ -118,7 +127,7 @@ namespace FastResetUpdated.Shared
             if (!_presetStore.Save(_activePresetName, Config))
                 return;
 
-            _logger.Msg($"FastReset+: updated preset '{_activePresetName}'.");
+            _logger.Msg($"BetterBonk: updated preset '{_activePresetName}'.");
         }
 
         // If the preset being deleted was the active one, fall back to Default rather than
@@ -134,7 +143,7 @@ namespace FastResetUpdated.Shared
                 _activePresetName = PresetStore.DefaultPresetName;
                 _presetStore.SaveActivePresetName(_activePresetName);
             }
-            _logger.Msg($"FastReset+: deleted preset '{name}'.");
+            _logger.Msg($"BetterBonk: deleted preset '{name}'.");
         }
 
         // Call once per frame from the loader's Update callback.
@@ -150,6 +159,14 @@ namespace FastResetUpdated.Shared
             // every run until a game-over happened to occur while enabled. The enabled check now
             // lives inside CheckSpawns itself, after scoring, right before the pause/reset action.
             RunSpawnCheckIfDue();
+
+            // Independent BetterBonk features (see ModPotBreaker.cs, ModLeaderboard.cs,
+            // ModToggleEverything.cs) — each gates itself on its own config flag, so calling
+            // them unconditionally here is safe and keeps OnUpdate as the one place that lists
+            // everything this mod does per frame.
+            UpdatePotBreaking();
+            UpdateLeaderboard();
+            UpdateToggleEverything();
         }
 
         private void PollHotkeys()
@@ -162,7 +179,7 @@ namespace FastResetUpdated.Shared
             {
                 Config.ModEnabled = !Config.ModEnabled;
                 SaveConfig();
-                _logger.Msg($"FastReset+: mod {(Config.ModEnabled ? "enabled" : "disabled")}.");
+                _logger.Msg($"BetterBonk: mod {(Config.ModEnabled ? "enabled" : "disabled")}.");
             }
 
             if (PollKeyJustPressed(Config.ToggleMenuKey, ref _toggleMenuKeyWasDown))
@@ -367,7 +384,7 @@ namespace FastResetUpdated.Shared
 
             if (!Config.ModEnabled)
             {
-                _logger.Msg("FastReset+: mod disabled — spawns scored but no auto pause/reset.");
+                _logger.Msg("BetterBonk: mod disabled — spawns scored but no auto pause/reset.");
                 return;
             }
 
@@ -488,7 +505,7 @@ namespace FastResetUpdated.Shared
                 score = Mathf.RoundToInt(Mathf.Clamp01(average) * 100f);
             }
 
-            _logger.Msg($"FastReset+: score breakdown [{count} categories]: {breakdown} -> {score}/100");
+            _logger.Msg($"BetterBonk: score breakdown [{count} categories]: {breakdown} -> {score}/100");
             return score;
         }
 

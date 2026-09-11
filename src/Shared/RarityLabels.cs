@@ -1,4 +1,4 @@
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // Human-readable labels for the rarity integers used throughout the menu. These are display
     // strings only — every actual comparison in ModCore uses the plain integers from FilterConfig,

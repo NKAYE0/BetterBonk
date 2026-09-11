@@ -1,7 +1,7 @@
 using BepInEx.Logging;
-using FastResetUpdated.Shared;
+using BetterBonk.Shared;
 
-namespace FastResetUpdated.BepInEx
+namespace BetterBonk.BepInEx
 {
     public sealed class BepInExLogger : IModLogger
     {

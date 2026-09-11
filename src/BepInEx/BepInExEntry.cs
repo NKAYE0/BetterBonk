@@ -8,13 +8,13 @@ using BepInEx.Logging;
 // (and the BasePlugin base class below) to match — everything else in this project is loader-
 // agnostic and won't need to change.
 using BepInEx.Unity.IL2CPP;
-using FastResetUpdated.Shared;
+using BetterBonk.Shared;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
 
-namespace FastResetUpdated.BepInEx
+namespace BetterBonk.BepInEx
 {
-    [BepInPlugin("nk.fastresetupdated", "FastReset+", "2.1.0")]
+    [BepInPlugin("nk.betterbonk", "BetterBonk", "3.0.0")]
     public sealed class BepInExEntry : BasePlugin
     {
         internal static ModCore Core { get; private set; }
@@ -22,19 +22,22 @@ namespace FastResetUpdated.BepInEx
         public override void Load()
         {
             IModLogger logger = new BepInExLogger(Log);
-            string configDir = Path.Combine(Paths.ConfigPath, "FastResetUpdated");
+            string configDir = Path.Combine(Paths.ConfigPath, "BetterBonk");
             ConfigStore configStore = new ConfigStore(configDir, logger);
 
             Core = new ModCore(logger, configStore);
 
-            // Register and attach the small forwarding behaviour described in
-            // FastResetBehaviour.cs so ModCore actually gets its per-frame callbacks.
-            ClassInjector.RegisterTypeInIl2Cpp<FastResetBehaviour>();
-            GameObject carrier = new GameObject("FastResetUpdated");
+            // Register and attach the small forwarding behaviour class below (BetterBonkBehaviour,
+            // still in a file named FastResetBehaviour.cs from before the rename — the filename
+            // doesn't need to match the class name in C#, and leaving it saves churning a file
+            // that would otherwise just be a byte-for-byte rename) so ModCore actually gets its
+            // per-frame callbacks.
+            ClassInjector.RegisterTypeInIl2Cpp<BetterBonkBehaviour>();
+            GameObject carrier = new GameObject("BetterBonk");
             UnityEngine.Object.DontDestroyOnLoad(carrier);
-            carrier.AddComponent<FastResetBehaviour>();
+            carrier.AddComponent<BetterBonkBehaviour>();
 
-            Log.LogInfo("FastReset+ loaded!");
+            Log.LogInfo("BetterBonk loaded!");
         }
     }
 }

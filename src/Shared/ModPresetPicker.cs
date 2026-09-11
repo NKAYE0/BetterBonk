@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // The preset-switcher window: lists every saved preset (plus the always-present "Default"
     // baseline) with Load/Delete buttons, and a "Save current settings as new preset..." flow

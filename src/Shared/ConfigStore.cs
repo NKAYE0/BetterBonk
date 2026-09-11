@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // Loads and saves FilterConfig as a small JSON file. Both loader builds point this at
     // their own conventional settings folder (see MelonEntry / BepInExEntry), so the file
@@ -27,8 +27,65 @@ namespace FastResetUpdated.Shared
         {
             _logger = logger;
             ConfigDirectory = directory;
+            MigrateFromOldBrandIfNeeded(directory, logger);
             Directory.CreateDirectory(directory);
-            _filePath = Path.Combine(directory, "FastResetUpdated.config.json");
+            _filePath = Path.Combine(directory, "BetterBonk.config.json");
+        }
+
+        // One-time migration for players upgrading from the old "FastResetUpdated" mod name: if
+        // the new BetterBonk settings folder doesn't exist yet but a sibling FastResetUpdated
+        // folder from a previous install does, copy its contents over (config, Presets
+        // subfolder, active-preset marker) so nothing is lost across the rename. Only runs when
+        // the new folder is completely absent, so it can never overwrite settings someone has
+        // already started customizing under the new name.
+        private static void MigrateFromOldBrandIfNeeded(string newDirectory, IModLogger logger)
+        {
+            try
+            {
+                if (Directory.Exists(newDirectory))
+                    return;
+
+                string parent = Path.GetDirectoryName(newDirectory);
+                if (string.IsNullOrEmpty(parent))
+                    return;
+
+                string oldDirectory = Path.Combine(parent, "FastResetUpdated");
+                if (!Directory.Exists(oldDirectory))
+                    return;
+
+                CopyDirectoryRenamingBrand(oldDirectory, newDirectory);
+                logger.Msg($"BetterBonk: migrated settings from '{oldDirectory}' to '{newDirectory}'.");
+            }
+            catch (Exception ex)
+            {
+                logger.Warning($"BetterBonk: failed to migrate old settings ({ex.Message}).");
+            }
+        }
+
+        // Recursively copies sourceDir into destDir, renaming any file that starts with the old
+        // "FastResetUpdated." brand prefix to start with "BetterBonk." instead (e.g. the main
+        // config file and the active-preset marker). Files without that prefix (saved presets,
+        // named by the player) are copied as-is. Never overwrites — this only ever runs against
+        // a destination that didn't exist a moment ago.
+        private static void CopyDirectoryRenamingBrand(string sourceDir, string destDir)
+        {
+            Directory.CreateDirectory(destDir);
+
+            const string oldPrefix = "FastResetUpdated.";
+            foreach (string filePath in Directory.GetFiles(sourceDir))
+            {
+                string fileName = Path.GetFileName(filePath);
+                if (fileName.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase))
+                    fileName = "BetterBonk." + fileName.Substring(oldPrefix.Length);
+
+                File.Copy(filePath, Path.Combine(destDir, fileName), overwrite: false);
+            }
+
+            foreach (string subDir in Directory.GetDirectories(sourceDir))
+            {
+                string subDirName = Path.GetFileName(subDir);
+                CopyDirectoryRenamingBrand(subDir, Path.Combine(destDir, subDirName));
+            }
         }
 
         public FilterConfig Load()
@@ -50,7 +107,7 @@ namespace FastResetUpdated.Shared
             {
                 // A corrupt or unreadable config file should never stop the mod from working —
                 // fall back to the known-good defaults and keep going.
-                _logger.Warning($"Fast Reset Updated: failed to load config ({ex.Message}). Using defaults.");
+                _logger.Warning($"BetterBonk: failed to load config ({ex.Message}). Using defaults.");
                 return FilterConfig.CreateDefault();
             }
         }
@@ -64,7 +121,7 @@ namespace FastResetUpdated.Shared
             }
             catch (Exception ex)
             {
-                _logger.Warning($"Fast Reset Updated: failed to save config ({ex.Message}).");
+                _logger.Warning($"BetterBonk: failed to save config ({ex.Message}).");
             }
         }
     }

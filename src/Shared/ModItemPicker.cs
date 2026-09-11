@@ -4,7 +4,7 @@ using System.Linq;
 using Il2CppAssets.Scripts.Inventory__Items__Pickups.Items;
 using UnityEngine;
 
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // Searchable picker for the "Required Item" setting, split out from ModMenu.cs. The game's
     // assembly has no static item-to-rarity table (rarity is assigned per Legendary-tier

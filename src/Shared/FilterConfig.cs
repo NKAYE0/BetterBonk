@@ -1,4 +1,4 @@
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // Every user-adjustable setting, saved to/loaded from a JSON file so the MelonLoader and
     // BepInEx builds share identical, portable settings. The default value of each property
@@ -14,7 +14,7 @@ namespace FastResetUpdated.Shared
         public string ToggleModKey { get; set; } = "F6";   // fully enables/disables auto-reset
         public string ToggleMenuKey { get; set; } = "F7";  // opens/closes the in-game settings window
 
-        // Small always-on-screen "Fast Reset: ON/OFF" label, since the toggle key alone gives
+        // Small always-on-screen "Quick Reset: ON/OFF" label, since the toggle key alone gives
         // no feedback about which state the mod is currently in.
         public bool ShowStatusIndicator { get; set; } = true;
 
@@ -74,6 +74,20 @@ namespace FastResetUpdated.Shared
         // matched against items a Shady Guy is offering at Legendary rarity — see ModCore.
         public bool RequireSpecificLegendaryItem { get; set; } = false;
         public string RequiredLegendaryItemName { get; set; } = "";
+
+        // --- Pot Breaking ---
+        public bool AutoBreakPots { get; set; } = true;
+
+        // --- Personal Leaderboard ---
+        public bool PersonalLeaderboardEnabled { get; set; } = true;
+
+        // Stored as the game's ECharacter enum name (e.g. "Knight"), same reasoning as
+        // RequiredLegendaryItemName above. Empty string means "no filter, show every
+        // character's scores".
+        public string PersonalLeaderboardCharacterFilter { get; set; } = "";
+
+        // --- Toggle Everything ---
+        public bool ToggleEverythingEnabled { get; set; } = false;
 
         public static FilterConfig CreateDefault()
         {

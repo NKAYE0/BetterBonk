@@ -1,15 +1,15 @@
 using System;
 using System.IO;
-using FastResetUpdated.Shared;
+using BetterBonk.Shared;
 using MelonLoader;
 
 // MelonGame(null, null) matches the original Fast Reset mod exactly (verified by decompiling
 // it) — i.e. it doesn't restrict itself to a specific game internally, so this keeps the same
 // "no restriction" behaviour rather than guessing at Megabonk's internal MelonGame identifier.
-[assembly: MelonInfo(typeof(FastResetUpdated.MelonLoader.MelonEntry), "FastReset+", "2.1.0", "NK")]
+[assembly: MelonInfo(typeof(BetterBonk.MelonLoader.MelonEntry), "BetterBonk", "3.0.0", "NK")]
 [assembly: MelonGame(null, null)]
 
-namespace FastResetUpdated.MelonLoader
+namespace BetterBonk.MelonLoader
 {
     // MelonLoader entry point. This is the priority build per the project brief — keep this
     // one working first if a future game update breaks something.
@@ -27,11 +27,11 @@ namespace FastResetUpdated.MelonLoader
             // is the game's own executable folder regardless of MelonLoader version or how it
             // loaded this assembly, so it needs no loader-specific API at all.
             string gameDir = AppDomain.CurrentDomain.BaseDirectory;
-            string configDir = Path.Combine(gameDir, "UserData", "FastResetUpdated");
+            string configDir = Path.Combine(gameDir, "UserData", "BetterBonk");
             ConfigStore configStore = new ConfigStore(configDir, logger);
 
             _core = new ModCore(logger, configStore);
-            LoggerInstance.Msg("FastReset+ loaded!");
+            LoggerInstance.Msg("BetterBonk loaded!");
         }
 
         public override void OnUpdate()

@@ -1,7 +1,8 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace FastResetUpdated.Shared
+namespace BetterBonk.Shared
 {
     // The in-game settings window, split out from ModCore.cs purely for readability.
     // Everything here reads/writes ModCore.Config directly and calls SaveConfig() explicitly
@@ -30,8 +31,31 @@ namespace FastResetUpdated.Shared
             ToggleMenuKey
         }
 
+        // BetterBonk's menu pages — Quick Reset is first/default per the brief, the other three
+        // are the mod's other features, one tab each. Adding a feature means adding one entry
+        // here plus a Draw*Tab/Compute*ContentHeight pair below; nothing else in this file needs
+        // to change.
+        private enum MenuTab
+        {
+            QuickReset,
+            PotBreaking,
+            Leaderboard,
+            ToggleEverything
+        }
+
+        private static readonly (MenuTab Tab, string Label)[] TabDefinitions =
+        {
+            (MenuTab.QuickReset, "Quick Reset"),
+            (MenuTab.PotBreaking, "Pot Breaking"),
+            (MenuTab.Leaderboard, "Leaderboard"),
+            (MenuTab.ToggleEverything, "Toggle Everything")
+        };
+
+        private MenuTab _activeTab = MenuTab.QuickReset;
+
         private const float Margin = 14f;
         private const float TitleHeight = 26f;
+        private const float TitleTextWidth = 140f;
         private const float RowHeight = 24f;
         private const float RowSpacing = 6f;
         private const float SectionGap = 14f;
@@ -40,7 +64,9 @@ namespace FastResetUpdated.Shared
         private const float RebindButtonWidth = 100f;
         private const float GripSize = 13f;
         private const float ScrollbarWidth = 10f;
-        private const float MinWindowWidth = 360f;
+        // Wide enough for the title plus all four tab buttons without crowding — the old 360px
+        // minimum predates the tab bar and left too little room for it.
+        private const float MinWindowWidth = 560f;
         private const float MinWindowHeight = 220f;
 
         private bool _menuOpen;
@@ -66,6 +92,8 @@ namespace FastResetUpdated.Shared
         private GUIStyle _titleStyle;
         private GUIStyle _sectionStyle;
         private GUIStyle _valueStyle;
+        private GUIStyle _activeTabStyle;
+        private GUIStyle _inactiveTabStyle;
         private static Texture2D _solidTexture;
 
         public bool MenuOpen => _menuOpen;
@@ -107,6 +135,7 @@ namespace FastResetUpdated.Shared
             DrawStatusIndicator();
             DrawItemPickerWindow();
             DrawPresetPickerWindow();
+            DrawToggleEverythingPresetPickerWindow();
 
             if (!_menuOpen)
                 return;
@@ -122,7 +151,7 @@ namespace FastResetUpdated.Shared
             GUI.Window(GetHashCode(), _windowRect, drawWindow, string.Empty);
         }
 
-        // Small "Fast Reset: ON/OFF" label, drawn regardless of whether the settings window is
+        // Small "Quick Reset: ON/OFF" label, drawn regardless of whether the settings window is
         // open, so the toggle hotkey has some feedback beyond a log line the player likely
         // never looks at. GUIStyle can only be constructed once GUI.skin exists, i.e. from
         // inside an OnGUI call, so these are built lazily on first use rather than at field
@@ -150,7 +179,7 @@ namespace FastResetUpdated.Shared
             if (Config.ShowStatusIndicator)
             {
                 bool enabled = Config.ModEnabled;
-                GUI.Label(new Rect(12, 12, 220, 24), enabled ? "Fast Reset: ON" : "Fast Reset: OFF",
+                GUI.Label(new Rect(12, 12, 220, 24), enabled ? "Quick Reset: ON" : "Quick Reset: OFF",
                     enabled ? _indicatorOnStyle : _indicatorOffStyle);
             }
 
@@ -201,6 +230,33 @@ namespace FastResetUpdated.Shared
             _sectionStyle.normal.textColor = new Color(0.8f, 0.85f, 1f);
 
             _valueStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter };
+
+            _activeTabStyle = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, clipping = TextClipping.Clip };
+            _activeTabStyle.normal.textColor = Color.white;
+
+            _inactiveTabStyle = new GUIStyle(GUI.skin.button) { clipping = TextClipping.Clip };
+            _inactiveTabStyle.normal.textColor = new Color(0.75f, 0.75f, 0.78f);
+        }
+
+        // Drawn to the right of the title, one button per MenuTab. Switching tabs resets scroll
+        // so a page never opens scrolled to wherever a different, possibly much longer, page
+        // happened to be left.
+        private void DrawTabBar(Rect rect)
+        {
+            const float gap = 4f;
+            float tabWidth = (rect.width - gap * (TabDefinitions.Length - 1)) / TabDefinitions.Length;
+
+            for (int i = 0; i < TabDefinitions.Length; i++)
+            {
+                (MenuTab tab, string label) = TabDefinitions[i];
+                Rect tabRect = new Rect(rect.x + i * (tabWidth + gap), rect.y, tabWidth, rect.height);
+                bool isActive = _activeTab == tab;
+                if (GUI.Button(tabRect, label, isActive ? _activeTabStyle : _inactiveTabStyle) && !isActive)
+                {
+                    _activeTab = tab;
+                    _scrollOffset = 0f;
+                }
+            }
         }
 
         // A single reusable white 1x1 texture, tinted per draw via GUI.color — used for every
@@ -238,7 +294,10 @@ namespace FastResetUpdated.Shared
             DrawSolidRect(new Rect(0, 0, _windowRect.width, _windowRect.height), BackgroundColor);
 
             float contentWidth = _windowRect.width - Margin * 2;
-            GUI.Label(new Rect(Margin, Margin, contentWidth, TitleHeight), "FastReset+", _titleStyle);
+            GUI.Label(new Rect(Margin, Margin, TitleTextWidth, TitleHeight), "BetterBonk Menu", _titleStyle);
+
+            Rect tabBarRect = new Rect(Margin + TitleTextWidth, Margin, contentWidth - TitleTextWidth, TitleHeight);
+            DrawTabBar(tabBarRect);
 
             float viewportTop = Margin + TitleHeight;
             float footerHeight = Margin + RowHeight + SectionGap;
@@ -281,6 +340,25 @@ namespace FastResetUpdated.Shared
         // required-item row. Drawn inside a GUI.BeginGroup (see DrawWindow), so all coordinates
         // here are relative to the viewport's top-left, not the window's.
         private void DrawScrollableContent(float width)
+        {
+            switch (_activeTab)
+            {
+                case MenuTab.QuickReset:
+                    DrawQuickResetTab(width);
+                    break;
+                case MenuTab.PotBreaking:
+                    DrawPotBreakingTab(width);
+                    break;
+                case MenuTab.Leaderboard:
+                    DrawLeaderboardTab(width);
+                    break;
+                case MenuTab.ToggleEverything:
+                    DrawToggleEverythingTab(width);
+                    break;
+            }
+        }
+
+        private void DrawQuickResetTab(float width)
         {
             Config.ModEnabled = GUI.Toggle(NextRow(width), Config.ModEnabled,
                 $"Mod enabled  (toggle key: {Config.ToggleModKey})");
@@ -392,10 +470,22 @@ namespace FastResetUpdated.Shared
             }
         }
 
-        // Mirrors DrawScrollableContent's row layout exactly — kept as a separate analytical
-        // pass (rather than measuring the real draw call) since IMGUI has no "measure without
-        // drawing" primitive; if a row is ever added to one, it must be added to the other.
         private float ComputeContentHeight()
+        {
+            return _activeTab switch
+            {
+                MenuTab.QuickReset => ComputeQuickResetContentHeight(),
+                MenuTab.PotBreaking => ComputePotBreakingContentHeight(),
+                MenuTab.Leaderboard => ComputeLeaderboardContentHeight(),
+                MenuTab.ToggleEverything => ComputeToggleEverythingContentHeight(),
+                _ => 0f
+            };
+        }
+
+        // Mirrors DrawQuickResetTab's row layout exactly — kept as a separate analytical pass
+        // (rather than measuring the real draw call) since IMGUI has no "measure without
+        // drawing" primitive; if a row is ever added to one, it must be added to the other.
+        private float ComputeQuickResetContentHeight()
         {
             int rows = 6; // mod toggle, indicator toggle, map-score toggle, acceptable-score stepper, 2 rebind rows
             // "Requisites" label + separate-mode toggle + (combined: 1 row, separate: 2 rows) +
@@ -412,6 +502,137 @@ namespace FastResetUpdated.Shared
             float rowsHeight = rows * (RowHeight + RowSpacing);
             float gaps = SectionGap * 4;
             return rowsHeight + gaps;
+        }
+
+        private void DrawPotBreakingTab(float width)
+        {
+            GUI.Label(NextRow(width), "Pot Breaking", _sectionStyle);
+            Config.AutoBreakPots = GUI.Toggle(NextRow(width), Config.AutoBreakPots,
+                "Automatically break pots (only pots — anything spawned next to one is left alone)");
+        }
+
+        private float ComputePotBreakingContentHeight()
+        {
+            int rows = 2; // section label + toggle
+            return rows * (RowHeight + RowSpacing);
+        }
+
+        private void DrawLeaderboardTab(float width)
+        {
+            GUI.Label(NextRow(width), "Personal Leaderboard", _sectionStyle);
+            Config.PersonalLeaderboardEnabled = GUI.Toggle(NextRow(width), Config.PersonalLeaderboardEnabled,
+                "Add a personal-best tab to the leaderboard screen");
+            if (Config.PersonalLeaderboardEnabled)
+                DrawCharacterFilterRow(NextRow(width));
+        }
+
+        private float ComputeLeaderboardContentHeight()
+        {
+            int rows = 2; // section label + enable toggle
+            if (Config.PersonalLeaderboardEnabled)
+                rows += 1;
+            return rows * (RowHeight + RowSpacing);
+        }
+
+        private void DrawToggleEverythingTab(float width)
+        {
+            GUI.Label(NextRow(width), "Toggle Everything", _sectionStyle);
+            Config.ToggleEverythingEnabled = GUI.Toggle(NextRow(width), Config.ToggleEverythingEnabled,
+                "Unlock every achievement-gated item/upgrade and let you toggle each on or off");
+
+            if (!Config.ToggleEverythingEnabled)
+                return;
+
+            EnsureToggleEverythingPresetStore();
+
+            _rowCursorY += SectionGap;
+            GUI.Label(NextRow(width), "Presets", _sectionStyle);
+            GUI.Label(NextRow(width),
+                "Saves/loads which achievements are currently toggled off on the game's own achievement screen.",
+                _stepperLabelStyle);
+
+            Rect activeRow = NextRow(width);
+            Rect switchRect = new Rect(activeRow.xMax - RebindButtonWidth, activeRow.y, RebindButtonWidth, activeRow.height);
+            Rect activeLabelRect = new Rect(activeRow.x, activeRow.y, activeRow.width - RebindButtonWidth - 8, activeRow.height);
+            GUI.Label(activeLabelRect, $"Active preset: {_activeToggleEverythingPresetName}", _stepperLabelStyle);
+            if (GUI.Button(switchRect, "Switch..."))
+                OpenToggleEverythingPresetPicker();
+
+            Rect saveRow = NextRow(width);
+            if (ToggleEverythingPresetStore.IsDefault(_activeToggleEverythingPresetName))
+            {
+                if (GUI.Button(saveRow, "Save current toggles as new preset..."))
+                    OpenToggleEverythingPresetPicker(startInSaveAsMode: true);
+            }
+            else
+            {
+                float halfWidth = (saveRow.width - 8) / 2f;
+                Rect updateRect = new Rect(saveRow.x, saveRow.y, halfWidth, saveRow.height);
+                Rect saveAsRect = new Rect(updateRect.xMax + 8, saveRow.y, halfWidth, saveRow.height);
+                if (GUI.Button(updateRect, $"Update '{_activeToggleEverythingPresetName}'"))
+                    UpdateActiveToggleEverythingPreset();
+                if (GUI.Button(saveAsRect, "Save As New..."))
+                    OpenToggleEverythingPresetPicker(startInSaveAsMode: true);
+            }
+        }
+
+        private float ComputeToggleEverythingContentHeight()
+        {
+            int rows = 2; // section label + toggle
+            float gaps = 0f;
+            if (Config.ToggleEverythingEnabled)
+            {
+                rows += 1 + 1 + 1 + 1; // "Presets" label + hint line + active/switch row + save-buttons row
+                gaps += SectionGap;
+            }
+            return rows * (RowHeight + RowSpacing) + gaps;
+        }
+
+        // "All" plus every value of the game's own ECharacter enum, read via reflection rather
+        // than hardcoded so this never drifts out of sync with the game's actual character list.
+        private static string[] _characterFilterOptions;
+
+        private static string[] CharacterFilterOptions()
+        {
+            if (_characterFilterOptions == null)
+            {
+                string[] names = Enum.GetNames(typeof(Il2Cpp.ECharacter));
+                _characterFilterOptions = new string[names.Length + 1];
+                _characterFilterOptions[0] = "All";
+                Array.Copy(names, 0, _characterFilterOptions, 1, names.Length);
+            }
+            return _characterFilterOptions;
+        }
+
+        // Same +/- stepper shape as IntStepper, cycling through CharacterFilterOptions() instead
+        // of a numeric range — see the file-level comment for why a text field isn't an option.
+        private void DrawCharacterFilterRow(Rect row)
+        {
+            EnsureStepperLabelStyle();
+
+            string[] options = CharacterFilterOptions();
+            string current = string.IsNullOrEmpty(Config.PersonalLeaderboardCharacterFilter)
+                ? "All"
+                : Config.PersonalLeaderboardCharacterFilter;
+            int index = Array.IndexOf(options, current);
+            if (index < 0)
+                index = 0;
+
+            Rect labelRect = new Rect(row.x, row.y, LabelColumnWidth, row.height);
+            float stepperWidth = row.width - LabelColumnWidth;
+            float valueWidth = stepperWidth - StepperButtonWidth * 2 - 8;
+            Rect minusRect = new Rect(row.xMax - stepperWidth, row.y, StepperButtonWidth, row.height);
+            Rect valueRect = new Rect(minusRect.xMax + 4, row.y, valueWidth, row.height);
+            Rect plusRect = new Rect(valueRect.xMax + 4, row.y, StepperButtonWidth, row.height);
+
+            GUI.Label(labelRect, "Character filter", _stepperLabelStyle);
+            GUI.Label(valueRect, options[index], _valueStyle);
+            if (GUI.Button(minusRect, "-"))
+                index = (index - 1 + options.Length) % options.Length;
+            if (GUI.Button(plusRect, "+"))
+                index = (index + 1) % options.Length;
+
+            Config.PersonalLeaderboardCharacterFilter = options[index] == "All" ? string.Empty : options[index];
         }
 
         private void HandleScrollWheel(Rect viewportInWindowSpace, float maxScroll)
@@ -600,18 +821,23 @@ namespace FastResetUpdated.Shared
         // +/- stepper in place of a text field — see the file-level comment for why: this
         // build's GUI.TextField is confirmed non-functional. Holding Shift takes the larger of
         // the two given steps.
+        private void EnsureStepperLabelStyle()
+        {
+            if (_stepperLabelStyle != null)
+                return;
+
+            // wordWrap off + Clip: a label text too long for LabelColumnWidth is cut off
+            // instead of wrapping onto a second line and bleeding into the row below (this
+            // is exactly what happened with the Legendary Surge reduction label). Clipping a
+            // label is a much less noticeable failure than a broken layout, and this makes
+            // the whole class of bug impossible rather than just fixing today's instance.
+            _stepperLabelStyle = new GUIStyle(GUI.skin.label) { wordWrap = false, clipping = TextClipping.Clip };
+            ClearBackgrounds(_stepperLabelStyle);
+        }
+
         private int IntStepper(Rect row, string label, int value, int smallStep, int largeStep, int min, int max)
         {
-            if (_stepperLabelStyle == null)
-            {
-                // wordWrap off + Clip: a label text too long for LabelColumnWidth is cut off
-                // instead of wrapping onto a second line and bleeding into the row below (this
-                // is exactly what happened with the Legendary Surge reduction label). Clipping a
-                // label is a much less noticeable failure than a broken layout, and this makes
-                // the whole class of bug impossible rather than just fixing today's instance.
-                _stepperLabelStyle = new GUIStyle(GUI.skin.label) { wordWrap = false, clipping = TextClipping.Clip };
-                ClearBackgrounds(_stepperLabelStyle);
-            }
+            EnsureStepperLabelStyle();
 
             Rect labelRect = new Rect(row.x, row.y, LabelColumnWidth, row.height);
             float stepperWidth = row.width - LabelColumnWidth;
