@@ -71,30 +71,27 @@
       <HintPath>$(MelonLoaderDir)\Il2CppAssemblies\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Toggle Everything reuses this compiled DLL directly (author-authorized exact-code
-         reuse — see ModToggleEverything.cs for why this wasn't hand-transcribed instead).
-         Private is left at its default (true) so it's copied into this project's own output
-         folder; it still needs to end up in MelonLoader's UserLibs folder at runtime, which
-         CopyToUserLibs below handles. -->
-    <Reference Include="MegabonkToggleEverything">
-      <HintPath>..\..\lib\MegabonkToggleEverything.dll</HintPath>
-    </Reference>
+         reuse — see ModToggleEverything.cs for why this wasn't hand-transcribed instead), but
+         rather than shipping it as a second, separately-placed file, it's embedded straight into
+         this assembly and loaded from memory at runtime (ModToggleEverything.cs,
+         LoadEmbeddedToggleEverythingAssembly). LogicalName is pinned to a fixed string so the
+         loading code doesn't need to know which project (and therefore which default namespace)
+         embedded it. -->
+    <EmbeddedResource Include="..\..\lib\MegabonkToggleEverything.dll">
+      <LogicalName>MegabonkToggleEverything.dll</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- Drop the built mod straight into the game's Mods folder once MelonLoaderDir is set
-       in FastReset.local.props, so "build" is the whole install step. -->
+       in FastReset.local.props, so "build" is the whole install step. This is now the ONLY
+       file that needs installing — MegabonkToggleEverything.dll is embedded inside it (see the
+       EmbeddedResource item above), so there's no separate UserLibs step anymore. -->
   <Target Name="CopyToMods" AfterTargets="Build" Condition="'$(MelonLoaderDir)' != ''">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MelonLoaderDir)\..\Mods" SkipUnchangedFiles="true" />
-  </Target>
-
-  <!-- MegabonkToggleEverything.dll must NOT land in Mods itself — it contains its own real
-       MelonMod class, and MelonLoader would load that as a second, always-on copy of this
-       feature alongside our own toggle-gated one. UserLibs is MelonLoader's folder for exactly
-       this situation: DLLs a mod depends on that shouldn't be loaded as mods in their own
-       right. (This placement isn't yet confirmed against a real build — see the comment at the
-       top of ModToggleEverything.cs.) -->
-  <Target Name="CopyToUserLibs" AfterTargets="Build" Condition="'$(MelonLoaderDir)' != ''">
-    <Copy SourceFiles="..\..\lib\MegabonkToggleEverything.dll" DestinationFolder="$(MelonLoaderDir)\..\UserLibs" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

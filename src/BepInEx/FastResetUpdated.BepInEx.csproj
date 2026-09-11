@@ -81,25 +81,27 @@
       <HintPath>$(BepInExDir)\interop\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Toggle Everything reuses this compiled DLL directly (author-authorized exact-code
-         reuse — see ModToggleEverything.cs for why this wasn't hand-transcribed instead).
-         Private is left at its default (true) so it's copied into this project's own output
-         folder, and CopyToPlugins below carries it the rest of the way into the plugins
-         folder alongside our own DLL. -->
-    <Reference Include="MegabonkToggleEverything">
-      <HintPath>..\..\lib\MegabonkToggleEverything.dll</HintPath>
-    </Reference>
+         reuse — see ModToggleEverything.cs for why this wasn't hand-transcribed instead), but
+         rather than shipping it as a second file alongside our own DLL, it's embedded straight
+         into this assembly and loaded from memory at runtime (ModToggleEverything.cs,
+         LoadEmbeddedToggleEverythingAssembly). LogicalName is pinned to a fixed string so the
+         loading code doesn't need to know which project (and therefore which default namespace)
+         embedded it — this same ItemGroup shape is mirrored on the MelonLoader project. -->
+    <EmbeddedResource Include="..\..\lib\MegabonkToggleEverything.dll">
+      <LogicalName>MegabonkToggleEverything.dll</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <!-- Drop the built mod straight into BepInEx\plugins once BepInExDir is set in
-       FastReset.local.props. MegabonkToggleEverything.dll rides along in the same
-       subfolder as this mod's own DLL — it has no BepInEx plugin class of its own, so
-       BepInEx's plugin scan will skip it as a plugin, but it still needs to be sitting
-       somewhere BepInEx's assembly resolution can find it when our code references its
-       types (see ModToggleEverything.cs for the not-yet-build-confirmed caveat on this). -->
+       FastReset.local.props. This is now the ONLY file that needs installing —
+       MegabonkToggleEverything.dll is embedded inside it (see the EmbeddedResource item
+       above), so there's nothing else to copy alongside it. -->
   <Target Name="CopyToPlugins" AfterTargets="Build" Condition="'$(BepInExDir)' != ''">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)\plugins\BetterBonk" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="..\..\lib\MegabonkToggleEverything.dll" DestinationFolder="$(BepInExDir)\plugins\BetterBonk" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

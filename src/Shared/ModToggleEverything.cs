@@ -17,28 +17,27 @@ namespace BetterBonk.Shared
     // code exactly as-is for this feature. Rather than hand-transcribing its Harmony patches
     // into this project (one of them — the custom item-rarity fallback/dedup logic used when
     // picking a random item — is intricate enough that a manual re-derivation from decompiled
-    // IL risked subtly changing behaviour the author already has working), this project
-    // references their compiled DLL directly (see lib/MegabonkToggleEverything.dll and the
-    // "MegabonkToggleEverything" reference in both .csproj files) and takes over applying and
-    // removing its patches itself here, gated on the config toggle below, instead of letting the
-    // DLL's own MelonMod entry point apply them unconditionally the moment it's loaded.
+    // IL risked subtly changing behaviour the author already has working), this project embeds
+    // their compiled DLL as a resource inside its own assembly (see lib/MegabonkToggleEverything.dll
+    // and the EmbeddedResource item in both .csproj files) and takes over applying and removing
+    // its patches itself here, gated on the config toggle below, instead of letting the DLL's own
+    // MelonMod entry point apply them unconditionally the moment it's loaded.
     //
-    // NOT YET CONFIRMED BY A REAL BUILD: for typeof(...).Assembly below to even load,
-    // MegabonkToggleEverything.dll has to be resolvable at runtime alongside the built
-    // BetterBonk DLL. Both .csproj files now copy it to where each loader should find it
-    // (MelonLoader's UserLibs folder; the same BepInEx\plugins\BetterBonk subfolder as this
-    // mod's own DLL) based on how each loader's dependency resolution is documented to work,
-    // but neither placement has been verified against your actual install. If the log shows an
-    // assembly-load error mentioning "MegabonkToggleEverything" when this toggle is turned on,
-    // that placement is the first thing to check — for MelonLoader, confirm the DLL landed in
-    // UserLibs (not Mods, which would also load its own separate always-on MelonMod class); for
-    // BepInEx, confirm it's sitting next to BetterBonk.dll in BepInEx\plugins\BetterBonk.
+    // Embedding it (rather than shipping it as a second file players install separately) means
+    // the whole mod is a single DLL to distribute. It also sidesteps the original double-load
+    // concern entirely: since the dependency is never sitting on disk as a file in a folder either
+    // loader scans for mods (Mods\, BepInEx\plugins\), MelonLoader's/BepInEx's own mod-discovery
+    // never gets a chance to find and instantiate its MelonMod class a second time — only the
+    // Assembly object loaded from memory in LoadEmbeddedToggleEverythingAssembly() below ever
+    // exists, and nothing but Harmony's PatchAll(that assembly) touches it.
     public sealed partial class ModCore
     {
         private const string ToggleEverythingHarmonyId = "nk.betterbonk.toggleeverything";
+        private const string ToggleEverythingResourceName = "MegabonkToggleEverything.dll";
 
         private HarmonyApi _toggleEverythingHarmony;
         private bool _toggleEverythingApplied;
+        private static System.Reflection.Assembly _cachedToggleEverythingAssembly;
 
         private void UpdateToggleEverything()
         {
@@ -56,10 +55,9 @@ namespace BetterBonk.Shared
             try
             {
                 // The DLL's Harmony patch container (ToggleEverythingPatches) turned out to be
-                // internal, so it can't be named at compile time (CS0122). Loading the assembly
-                // by name sidesteps that entirely — it's already resolvable at runtime since the
-                // .csproj copies it right alongside this mod's own DLL.
-                System.Reflection.Assembly toggleAssembly = System.Reflection.Assembly.Load("MegabonkToggleEverything");
+                // internal, so it can't be named at compile time (CS0122) — everything here goes
+                // through reflection against whatever Assembly object we hand it instead.
+                System.Reflection.Assembly toggleAssembly = LoadEmbeddedToggleEverythingAssembly();
                 EnsureToggleEverythingLoggerInitialized(toggleAssembly);
                 _toggleEverythingHarmony ??= new HarmonyApi(ToggleEverythingHarmonyId);
                 _toggleEverythingHarmony.PatchAll(toggleAssembly);
@@ -70,8 +68,44 @@ namespace BetterBonk.Shared
             {
                 _logger.Warning(
                     $"BetterBonk: failed to enable Toggle Everything ({ex.Message}). " +
-                    "Is MegabonkToggleEverything.dll present where this mod can load it?");
+                    "Is the MegabonkToggleEverything.dll resource embedded in this build?");
             }
+        }
+
+        // Loads MegabonkToggleEverything.dll from the resource embedded in this same assembly
+        // (see the EmbeddedResource item in both .csproj files) rather than from a separate file
+        // on disk. Cached after the first successful load: Assembly.Load(byte[]) creates a new,
+        // distinct assembly instance on every call (unlike Assembly.Load(string), which returns
+        // the runtime's already-cached-by-name instance), so re-loading from bytes on every
+        // enable/disable toggle would leak a fresh copy of every type each time instead of
+        // reusing one.
+        private static System.Reflection.Assembly LoadEmbeddedToggleEverythingAssembly()
+        {
+            if (_cachedToggleEverythingAssembly != null)
+                return _cachedToggleEverythingAssembly;
+
+            System.Reflection.Assembly thisAssembly = typeof(ModCore).Assembly;
+            using (System.IO.Stream stream = thisAssembly.GetManifestResourceStream(ToggleEverythingResourceName))
+            {
+                if (stream == null)
+                {
+                    throw new InvalidOperationException(
+                        $"embedded resource '{ToggleEverythingResourceName}' not found in {thisAssembly.GetName().Name}");
+                }
+
+                byte[] bytes = new byte[stream.Length];
+                int totalRead = 0;
+                while (totalRead < bytes.Length)
+                {
+                    int read = stream.Read(bytes, totalRead, bytes.Length - totalRead);
+                    if (read <= 0)
+                        break;
+                    totalRead += read;
+                }
+
+                _cachedToggleEverythingAssembly = System.Reflection.Assembly.Load(bytes);
+            }
+            return _cachedToggleEverythingAssembly;
         }
 
         // The DLL's own MelonMod entry point (MegabonkToggleEverything.ToggleEverything) never
